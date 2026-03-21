@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: tfg-rs
+
+  docker:
+    compose:
+      file: ../nuv-tfg-infra/docker-compose.yml
+      lifecycle-management: start-and-stop
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/stock_manager
+    username: ${DB_USER:nuv-tfg}
+    password: ${DB_PASSWORD:0000}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        model: llama3.2
+
+server:
+  port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:your-256-bit-secret-change-this-in-production}
+  expiration-ms: 86400000
