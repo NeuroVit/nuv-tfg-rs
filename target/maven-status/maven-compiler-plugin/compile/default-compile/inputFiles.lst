@@ -2,8 +2,11 @@
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/config/SecurityConfig.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/controller/AuthController.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/controller/ProductoController.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/ActualizarStockRequest.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/AuthRequest.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/ProductoRequest.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/response/AuthResponse.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/response/ProductoResponse.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/entity/AlertaStock.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/entity/Categoria.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/entity/HistorialPrecio.java
@@ -17,3 +20,10 @@
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/repository/MovimientoStockRepository.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/repository/ProductoRepository.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/repository/UsuarioRepository.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/security/JwtAuthFilter.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/security/JwtService.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/security/UsuarioDetailsService.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/AuthService.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/ProductoService.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/impl/AuthServiceImpl.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/impl/ProductoServiceImpl.java
