@@ -6,4 +6,5 @@ import com.nuv.tfgrs.dto.response.AuthResponse;
 public interface AuthService {
     AuthResponse registrar(AuthRequest.Register request);
     AuthResponse login(AuthRequest.Login request);
+    AuthResponse loginConGoogle(String credential);
 }

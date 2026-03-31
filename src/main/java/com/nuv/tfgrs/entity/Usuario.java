@@ -31,7 +31,7 @@ public class Usuario implements UserDetails {
     @Column(nullable = false, unique = true, length = 255)
     private String email;
  
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash", nullable = true)
     private String passwordHash;
  
     @Enumerated(EnumType.STRING)
@@ -43,6 +43,16 @@ public class Usuario implements UserDetails {
  
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "google_id", unique = true)
+    private String googleId;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    // Also make password nullable:
+    //@Column(nullable = true)
+    //private String password;
  
     @PrePersist
     protected void onCreate() {

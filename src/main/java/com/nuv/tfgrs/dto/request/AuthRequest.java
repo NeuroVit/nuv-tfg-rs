@@ -24,4 +24,6 @@ public class AuthRequest {
         @NotBlank
         String password
     ) {}
+
+    public record GoogleAuthRequest(String credential) {}
 }
