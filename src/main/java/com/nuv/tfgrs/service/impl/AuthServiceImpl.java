@@ -4,7 +4,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
-import com.google.api.client.util.Value;
+import org.springframework.beans.factory.annotation.Value;
 import com.nuv.tfgrs.dto.request.AuthRequest;
 import com.nuv.tfgrs.dto.response.AuthResponse;
 import com.nuv.tfgrs.entity.Usuario;
@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken.Payload;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -74,43 +76,54 @@ public class AuthServiceImpl implements AuthService {
     private String googleClientId;
 
     @Override
-    public AuthResponse loginConGoogle(String credential) {
-        try {
-            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
+public AuthResponse loginConGoogle(String credential) {
+    try {
+        log.info("=== GOOGLE AUTH === verifying token with clientId: {}", googleClientId);
+
+        GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
                 new NetHttpTransport(), new GsonFactory())
                 .setAudience(Collections.singletonList(googleClientId))
                 .build();
 
-            GoogleIdToken idToken = verifier.verify(credential);
-            if (idToken == null) throw new IllegalArgumentException("Token de Google inválido");
+        GoogleIdToken idToken = verifier.verify(credential);
+        if (idToken == null) throw new IllegalArgumentException("Token de Google inválido");
 
-            GoogleIdToken.Payload payload = idToken.getPayload();
-            String googleId  = payload.getSubject();
-            String email     = payload.getEmail();
-            String avatarUrl = (String) payload.get("picture");
+        Payload payload = idToken.getPayload();
+        String googleId  = payload.getSubject();
+        String email     = payload.getEmail();
+        String avatarUrl = (String) payload.get("picture");
 
-            // Upsert: find by googleId or email, else create
-            Usuario usuario = usuarioRepository.findByGoogleId(googleId)
+        log.info("Token valid. GoogleId: {}, Email: {}", googleId, email);
+
+        Usuario usuario = usuarioRepository.findByGoogleId(googleId)
                 .or(() -> usuarioRepository.findByUsername(email))
                 .orElseGet(() -> {
                     Usuario nuevo = new Usuario();
                     nuevo.setUsername(email);
-                    nuevo.setEmail(email);
-                    nuevo.setPasswordHash(null);
-                    nuevo.setRole(Role.ROLE_VIEWER); // default role for new OAuth users
+                    nuevo.setEmail(email); 
+                    nuevo.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+                    nuevo.setRole(Role.ROLE_VIEWER);
+                    nuevo.setCreatedAt(LocalDateTime.now());
+                    nuevo.setUpdatedAt(LocalDateTime.now());
                     return nuevo;
                 });
 
-            usuario.setGoogleId(googleId);
-            usuario.setAvatarUrl(avatarUrl);
-            usuarioRepository.save(usuario);
+        usuario.setGoogleId(googleId);
+        usuario.setAvatarUrl(avatarUrl);
+        usuarioRepository.save(usuario);
 
-            String token = jwtService.generarToken(usuario);
-            return new AuthResponse(token, usuario.getUsername(),
-                                    usuario.getRole().name(), 86400000L);
+        log.info("Usuario saved: {}, role: {}", usuario.getUsername(), usuario.getRole());
 
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Error verificando token de Google: " + e.getMessage());
-        }
+        String token = jwtService.generarToken(usuario);
+
+        log.info("JWT generated successfully for: {}", usuario.getUsername());
+
+        return new AuthResponse(token, usuario.getUsername(),
+                usuario.getRole().name(), 86400000L);
+
+    } catch (Exception e) {
+        log.error("Google auth failed: {}", e.getMessage(), e);
+        throw new IllegalArgumentException("Error verificando token de Google: " + e.getMessage());
     }
+}
 }
