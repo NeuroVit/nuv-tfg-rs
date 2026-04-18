@@ -39,17 +39,20 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse registrar(AuthRequest.Register request) {
         if (usuarioRepository.findByUsername(request.username()).isPresent()) {
-            throw new IllegalArgumentException("El usuario ya existe: " + request.username());
+            throw new IllegalArgumentException("Los datos introducidos no son válidos");
         }
 
         var usuario = Usuario.builder()
-                .username(request.username())
-                .email(request.email())
-                .passwordHash(passwordEncoder.encode(request.password()))
-                .role(Usuario.Role.ROLE_VIEWER)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
+            .username(request.username())
+            .email(request.email())
+            .passwordHash(passwordEncoder.encode(request.password()))
+            .nombre(request.nombre())
+            .apellidos(request.apellidos())
+            .role(Usuario.Role.ROLE_VIEWER)
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
+            .build();
+
 
         usuarioRepository.save(usuario);
         log.info("Nuevo usuario registrado: {}", usuario.getUsername());
@@ -96,17 +99,17 @@ public AuthResponse loginConGoogle(String credential) {
         log.info("Token valid. GoogleId: {}, Email: {}", googleId, email);
 
         Usuario usuario = usuarioRepository.findByGoogleId(googleId)
-                .or(() -> usuarioRepository.findByUsername(email))
-                .orElseGet(() -> {
-                    Usuario nuevo = new Usuario();
-                    nuevo.setUsername(email);
-                    nuevo.setEmail(email); 
-                    nuevo.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
-                    nuevo.setRole(Role.ROLE_VIEWER);
-                    nuevo.setCreatedAt(LocalDateTime.now());
-                    nuevo.setUpdatedAt(LocalDateTime.now());
-                    return nuevo;
-                });
+            .or(() -> usuarioRepository.findByEmail(email))  // busca por email, no por username
+            .orElseGet(() -> {
+                Usuario nuevo = new Usuario();
+                nuevo.setUsername(email);
+                nuevo.setEmail(email);
+                nuevo.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+                nuevo.setRole(Role.ROLE_VIEWER);
+                nuevo.setCreatedAt(LocalDateTime.now());
+                nuevo.setUpdatedAt(LocalDateTime.now());
+                return nuevo;
+            });
 
         usuario.setGoogleId(googleId);
         usuario.setAvatarUrl(avatarUrl);
