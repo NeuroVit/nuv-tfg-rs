@@ -1,7 +1,8 @@
 package com.nuv.tfgrs.controller;
 
 import com.nuv.tfgrs.dto.request.ActualizarStockRequest;
-import com.nuv.tfgrs.dto.request.ProductoRequest;
+import com.nuv.tfgrs.dto.request.CrearProductoRequest;
+import com.nuv.tfgrs.dto.request.EditarProductoRequest;
 import com.nuv.tfgrs.dto.response.ProductoResponse;
 import com.nuv.tfgrs.service.ProductoService;
 import jakarta.validation.Valid;
@@ -37,7 +38,7 @@ public class ProductoController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<ProductoResponse> crear(@Valid @RequestBody ProductoRequest request) {
+    public ResponseEntity<ProductoResponse> crear(@Valid @RequestBody CrearProductoRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(productoService.crear(request));
     }
 
@@ -45,7 +46,7 @@ public class ProductoController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<ProductoResponse> actualizar(
             @PathVariable Long id,
-            @Valid @RequestBody ProductoRequest request) {
+            @Valid @RequestBody EditarProductoRequest request) {
         return ResponseEntity.ok(productoService.actualizar(id, request));
     }
 

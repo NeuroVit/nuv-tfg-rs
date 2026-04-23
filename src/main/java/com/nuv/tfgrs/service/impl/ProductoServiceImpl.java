@@ -1,8 +1,10 @@
 package com.nuv.tfgrs.service.impl;
 
 import com.nuv.tfgrs.dto.request.ActualizarStockRequest;
-import com.nuv.tfgrs.dto.request.ProductoRequest;
+import com.nuv.tfgrs.dto.request.CrearProductoRequest;
+import com.nuv.tfgrs.dto.request.EditarProductoRequest;
 import com.nuv.tfgrs.dto.response.ProductoResponse;
+import com.nuv.tfgrs.entity.Categoria;
 import com.nuv.tfgrs.entity.MovimientoStock;
 import com.nuv.tfgrs.entity.Producto;
 import com.nuv.tfgrs.exception.ResourceNotFoundException;
@@ -13,8 +15,10 @@ import com.nuv.tfgrs.service.ProductoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -54,9 +58,9 @@ public class ProductoServiceImpl implements ProductoService {
 
     @Override
     @Transactional
-    public ProductoResponse crear(ProductoRequest request) {
-        var categoria = categoriaRepository.findById(request.categoriaId())
-                .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada: " + request.categoriaId()));
+    public ProductoResponse crear(CrearProductoRequest request) {
+        validarSkuDisponibleParaCrear(request.sku());
+        Categoria categoria = findCategoriaOrThrowBadRequest(request.categoriaId());
 
         var producto = Producto.builder()
                 .name(request.nombre())
@@ -75,18 +79,39 @@ public class ProductoServiceImpl implements ProductoService {
 
     @Override
     @Transactional
-    public ProductoResponse actualizar(Long id, ProductoRequest request) {
+    public ProductoResponse actualizar(Long id, EditarProductoRequest request) {
         var producto = findOrThrow(id);
-        var categoria = categoriaRepository.findById(request.categoriaId())
-                .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada: " + request.categoriaId()));
 
-        producto.setName(request.nombre());
-        producto.setSku(request.sku());
-        producto.setDescription(request.descripcion());
-        producto.setCurrentQuantity(request.cantidadActual());
-        producto.setMinimumStockLevel(request.nivelMinimoStock());
-        producto.setUnitPrice(request.precioUnitario());
-        producto.setCategory(categoria);
+        if (request.nombre() != null) {
+            if (request.nombre().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre no puede estar vacío");
+            }
+            producto.setName(request.nombre());
+        }
+
+        if (request.sku() != null) {
+            if (request.sku().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El SKU no puede estar vacío");
+            }
+            validarSkuDisponibleParaActualizar(id, request.sku());
+            producto.setSku(request.sku());
+        }
+
+        if (request.descripcion() != null) {
+            producto.setDescription(request.descripcion());
+        }
+        if (request.cantidadActual() != null) {
+            producto.setCurrentQuantity(request.cantidadActual());
+        }
+        if (request.nivelMinimoStock() != null) {
+            producto.setMinimumStockLevel(request.nivelMinimoStock());
+        }
+        if (request.precioUnitario() != null) {
+            producto.setUnitPrice(request.precioUnitario());
+        }
+        if (request.categoriaId() != null) {
+            producto.setCategory(findCategoriaOrThrowBadRequest(request.categoriaId()));
+        }
         producto.setUpdatedAt(LocalDateTime.now());
 
         return ProductoResponse.from(productoRepository.save(producto));
@@ -118,11 +143,13 @@ public class ProductoServiceImpl implements ProductoService {
                     .build();
             movimientoStockRepository.save(movimiento);
 
-            log.info("Stock actualizado — producto={}, delta={}, razon={}, nuevo={}", id, request.delta(), request.razon(), nuevaCantidad);
+            log.info("Stock actualizado correctamente");
+            log.debug("Stock actualizado — producto={}, delta={}, razon={}, nuevo={}", id, request.delta(), request.razon(), nuevaCantidad);
             return ProductoResponse.from(saved);
 
         } catch (OptimisticLockingFailureException ex) {
-            log.warn("Conflicto de concurrencia actualizando stock del producto {}", id);
+            log.warn("Conflicto de concurrencia actualizando stock");
+            log.debug("Conflicto de concurrencia actualizando stock del producto {}", id, ex);
             throw new OptimisticLockingFailureException(
                 "El producto fue modificado por otra operación. Por favor reintenta.", ex
             );
@@ -141,5 +168,22 @@ public class ProductoServiceImpl implements ProductoService {
     private Producto findOrThrow(Long id) {
         return productoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado: " + id));
+    }
+
+    private Categoria findCategoriaOrThrowBadRequest(Long categoriaId) {
+        return categoriaRepository.findById(categoriaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoría no encontrada"));
+    }
+
+    private void validarSkuDisponibleParaCrear(String sku) {
+        if (productoRepository.existsBySku(sku)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El SKU ya está en uso");
+        }
+    }
+
+    private void validarSkuDisponibleParaActualizar(Long idProducto, String sku) {
+        if (productoRepository.existsBySkuAndIdNot(sku, idProducto)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El SKU ya está en uso");
+        }
     }
 }

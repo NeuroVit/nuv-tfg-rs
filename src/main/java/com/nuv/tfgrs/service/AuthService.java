@@ -1,10 +1,11 @@
 package com.nuv.tfgrs.service;
 
 import com.nuv.tfgrs.dto.request.AuthRequest;
-import com.nuv.tfgrs.dto.response.AuthResponse;
+import com.nuv.tfgrs.dto.response.AuthTokens;
 
 public interface AuthService {
-    AuthResponse registrar(AuthRequest.Register request);
-    AuthResponse login(AuthRequest.Login request);
-    AuthResponse loginConGoogle(String credential);
+    AuthTokens registrar(AuthRequest.Register request);
+    AuthTokens login(AuthRequest.Login request);
+    AuthTokens loginConGoogle(String credential);
+    AuthTokens refresh(String refreshToken);
 }

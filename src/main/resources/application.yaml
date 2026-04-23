@@ -1,6 +1,8 @@
 spring:
   application:
     name: tfg-rs
+  config:
+    import: optional:file:.env[.properties]
 
   docker:
     compose:
@@ -36,8 +38,24 @@ server:
   port: 8080
 
 jwt:
-  secret: ${JWT_SECRET:your-256-bit-secret-change-this-in-production}
-  expiration-ms: 86400000
+  secret: ${JWT_SECRET}
+  expiration-ms: ${JWT_EXPIRATION_MS:900000}
+  refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
+  refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:false}
 
 google:
-  client-id: ${GOOGLE_CLIENT_ID:737916737346-0r8413fhtd3883movvg11r8fsupmmtnr.apps.googleusercontent.com}
+  client-id: ${GOOGLE_CLIENT_ID}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+rate-limit:
+  auth:
+    login:
+      capacity: ${RATE_LIMIT_AUTH_LOGIN_CAPACITY:10}
+      refill-tokens: ${RATE_LIMIT_AUTH_LOGIN_REFILL_TOKENS:10}
+      refill-seconds: ${RATE_LIMIT_AUTH_LOGIN_REFILL_SECONDS:60}
+    register:
+      capacity: ${RATE_LIMIT_AUTH_REGISTER_CAPACITY:5}
+      refill-tokens: ${RATE_LIMIT_AUTH_REGISTER_REFILL_TOKENS:5}
+      refill-seconds: ${RATE_LIMIT_AUTH_REGISTER_REFILL_SECONDS:60}

@@ -7,6 +7,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
  
 import java.time.LocalDateTime;
 import java.util.List;
@@ -47,9 +48,29 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
     }
 
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<Map<String, Object>> handleAuth(AuthException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(
+            Map.of(
+                "message", ex.getMessage(),
+                "timestamp", LocalDateTime.now()
+            )
+        );
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<String> handleIllegalArg(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).body(
+            Map.of(
+                "message", ex.getReason() != null ? ex.getReason() : "Solicitud inválida",
+                "timestamp", LocalDateTime.now()
+            )
+        );
     }
  
     private Map<String, String> toMap(FieldError error) {

@@ -17,4 +17,5 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
     @Query("SELECT p FROM Producto p WHERE p.currentQuantity < p.minimumStockLevel")
     List<Producto> findLowStockProducts();
     boolean existsBySku(String sku);
+    boolean existsBySkuAndIdNot(String sku, Long id);
 }

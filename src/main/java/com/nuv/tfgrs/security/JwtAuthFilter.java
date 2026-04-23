@@ -53,7 +53,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 }
             }
         } catch (Exception ex) {
-            log.warn("JWT inválido o expirado: {}", ex.getMessage());
+            log.warn("JWT inválido o expirado");
+            log.debug("JWT inválido o expirado en request {}", request.getRequestURI(), ex);
         }
 
         filterChain.doFilter(request, response);
