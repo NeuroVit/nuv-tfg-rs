@@ -5,7 +5,9 @@
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/controller/ProductoController.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/ActualizarStockRequest.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/AuthRequest.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/CrearCategoriaRequest.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/CrearProductoRequest.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/EditarCategoriaRequest.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/EditarProductoRequest.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/request/ProductoRequest.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/dto/response/AuthResponse.java
@@ -31,6 +33,8 @@
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/security/JwtService.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/security/UsuarioDetailsService.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/AuthService.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/CategoriaService.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/ProductoService.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/impl/AuthServiceImpl.java
+/Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/impl/CategoriaServiceImpl.java
 /Users/javier/Documents/nuv-tfg-rs/src/main/java/com/nuv/tfgrs/service/impl/ProductoServiceImpl.java

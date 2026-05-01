@@ -59,3 +59,8 @@ rate-limit:
       capacity: ${RATE_LIMIT_AUTH_REGISTER_CAPACITY:5}
       refill-tokens: ${RATE_LIMIT_AUTH_REGISTER_REFILL_TOKENS:5}
       refill-seconds: ${RATE_LIMIT_AUTH_REGISTER_REFILL_SECONDS:60}
+
+logging:
+  level:
+    org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
+    org.flywaydb.core.internal.database.base.Database: ERROR
