@@ -3,7 +3,6 @@ package com.nuv.tfgrs.security;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
-import io.github.bucket4j.Refill;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -109,17 +108,17 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     }
 
     private Bandwidth loginLimit() {
-        return Bandwidth.classic(
-                safeValue(loginCapacity),
-                Refill.intervally(safeValue(loginRefillTokens), Duration.ofSeconds(safeValue(loginRefillSeconds)))
-        );
+        return Bandwidth.builder()
+                .capacity(safeValue(loginCapacity))
+                .refillIntervally(safeValue(loginRefillTokens), Duration.ofSeconds(safeValue(loginRefillSeconds)))
+                .build();
     }
 
     private Bandwidth registerLimit() {
-        return Bandwidth.classic(
-                safeValue(registerCapacity),
-                Refill.intervally(safeValue(registerRefillTokens), Duration.ofSeconds(safeValue(registerRefillSeconds)))
-        );
+        return Bandwidth.builder()
+                .capacity(safeValue(registerCapacity))
+                .refillIntervally(safeValue(registerRefillTokens), Duration.ofSeconds(safeValue(registerRefillSeconds)))
+                .build();
     }
 
     private long safeValue(long value) {
