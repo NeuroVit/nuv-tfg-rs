@@ -38,13 +38,13 @@ public class ProductoController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'VIEWER')")
     public ResponseEntity<ProductoResponse> crear(@Valid @RequestBody CrearProductoRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(productoService.crear(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'VIEWER')")
     public ResponseEntity<ProductoResponse> actualizar(
             @PathVariable Long id,
             @Valid @RequestBody EditarProductoRequest request) {
