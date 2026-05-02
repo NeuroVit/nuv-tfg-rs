@@ -5,6 +5,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken.Payload;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.client.util.Base64;
 import com.nuv.tfgrs.dto.request.AuthRequest;
 import com.nuv.tfgrs.dto.response.AuthResponse;
 import com.nuv.tfgrs.dto.response.AuthTokens;
@@ -26,9 +27,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -47,6 +51,12 @@ public class AuthServiceImpl implements AuthService {
 
     @Value("${google.client-id}")
     private String googleClientId;
+
+    @Value("${auth.debug.google:false}")
+    private boolean googleDebugEnabled;
+
+    @Value("${auth.role-switch.enabled:true}")
+    private boolean roleSwitchEnabled;
 
     @Override
     @Transactional
@@ -101,9 +111,16 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthTokens loginConGoogle(String credential) {
+        if (credential == null || credential.isBlank()) {
+            log.warn("Google auth rechazado: credential vacío");
+            throw new AuthException(HttpStatus.BAD_REQUEST, googleError("credential vacío"));
+        }
+
         try {
             log.info("Iniciando verificación de login con Google");
-            log.debug("Google auth with clientId={}", googleClientId);
+            log.debug("Google auth config: clientId={}, tokenFingerprint={}",
+                    googleClientId, tokenFingerprint(credential));
+            log.debug("Google token hints (UNVERIFIED): {}", extractUnverifiedTokenHints(credential));
 
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
                     new NetHttpTransport(), new GsonFactory())
@@ -112,7 +129,9 @@ public class AuthServiceImpl implements AuthService {
 
             GoogleIdToken idToken = verifier.verify(credential);
             if (idToken == null) {
-                throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_GOOGLE_ERROR);
+                String detail = "verifier.verify devolvió null; posible mismatch de aud/client-id o token inválido";
+                log.warn("Google auth falló: {}", detail);
+                throw new AuthException(HttpStatus.UNAUTHORIZED, googleError(detail));
             }
 
             Payload payload = idToken.getPayload();
@@ -120,7 +139,11 @@ public class AuthServiceImpl implements AuthService {
             String email = payload.getEmail();
             String avatarUrl = (String) payload.get("picture");
 
-            log.debug("Google token válido. GoogleId={}, Email={}", googleId, email);
+            Object audience = payload.getAudience();
+            String issuer = payload.getIssuer();
+            String azp = payload.getAuthorizedParty();
+            log.debug("Google token válido. GoogleId={}, Email={}, aud={}, azp={}, iss={}",
+                    googleId, email, audience, azp, issuer);
 
             Usuario usuario = usuarioRepository.findByGoogleId(googleId)
                     .or(() -> usuarioRepository.findByEmail(email))
@@ -146,11 +169,16 @@ public class AuthServiceImpl implements AuthService {
             log.debug("JWT generated successfully for: {}", usuario.getUsername());
             return buildAuthTokens(usuario);
         } catch (AuthException ex) {
+            if (googleDebugEnabled) {
+                log.debug("Google auth AuthException detail: {}", ex.getMessage());
+            }
             throw ex;
         } catch (Exception ex) {
-            log.warn("Fallo en autenticación con Google");
+            String detail = "Excepción " + ex.getClass().getSimpleName() + ": "
+                    + (ex.getMessage() != null ? ex.getMessage() : "(sin mensaje)");
+            log.warn("Fallo en autenticación con Google: {}", detail);
             log.debug("Google auth failed", ex);
-            throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_GOOGLE_ERROR, ex);
+            throw new AuthException(HttpStatus.UNAUTHORIZED, googleError(detail), ex);
         }
     }
 
@@ -181,6 +209,26 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    @Override
+    @Transactional
+    public AuthTokens cambiarRolUsuarioActual(String username, String role) {
+        if (!roleSwitchEnabled) {
+            throw new AuthException(HttpStatus.FORBIDDEN, "El cambio de rol está deshabilitado");
+        }
+
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+
+        Role nuevoRol = parseRole(role);
+        usuario.setRole(nuevoRol);
+        usuario.setUpdatedAt(LocalDateTime.now());
+        usuarioRepository.save(usuario);
+
+        log.info("Rol de usuario actualizado");
+        log.debug("Rol actualizado para {} -> {}", username, nuevoRol);
+        return buildAuthTokens(usuario);
+    }
+
     private AuthTokens buildAuthTokens(Usuario usuario) {
         String accessToken = jwtService.generarAccessToken(usuario);
         String refreshToken = jwtService.generarRefreshToken(usuario);
@@ -191,5 +239,82 @@ public class AuthServiceImpl implements AuthService {
                 jwtService.getAccessExpirationMs()
         );
         return new AuthTokens(authResponse, refreshToken);
+    }
+
+    private String googleError(String detail) {
+        if (!googleDebugEnabled) {
+            return GENERIC_GOOGLE_ERROR;
+        }
+        return GENERIC_GOOGLE_ERROR + " [" + detail + "]";
+    }
+
+    private String tokenFingerprint(String token) {
+        if (token == null || token.isBlank()) {
+            return "empty";
+        }
+        int length = token.length();
+        int head = Math.min(10, length);
+        int tail = Math.min(8, Math.max(0, length - head));
+        String prefix = token.substring(0, head);
+        String suffix = token.substring(length - tail);
+        return "len=" + length + ",prefix=" + prefix + ",suffix=" + suffix;
+    }
+
+    private String extractUnverifiedTokenHints(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                return "formato JWT inválido";
+            }
+            String payloadJson = new String(Base64.decodeBase64(parts[1]), StandardCharsets.UTF_8);
+            return "iss=" + fieldValue(payloadJson, "iss")
+                    + ", aud=" + fieldValue(payloadJson, "aud")
+                    + ", azp=" + fieldValue(payloadJson, "azp")
+                    + ", sub=" + fieldValue(payloadJson, "sub")
+                    + ", exp=" + fieldValue(payloadJson, "exp")
+                    + ", iat=" + fieldValue(payloadJson, "iat")
+                    + ", email=" + fieldValue(payloadJson, "email");
+        } catch (Exception ex) {
+            return "no se pudo parsear payload JWT: " + ex.getClass().getSimpleName();
+        }
+    }
+
+    private String fieldValue(String json, String field) {
+        Pattern stringPattern = Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*\"([^\"]*)\"");
+        Matcher stringMatcher = stringPattern.matcher(json);
+        if (stringMatcher.find()) {
+            return stringMatcher.group(1);
+        }
+
+        Pattern numericPattern = Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*([0-9]+)");
+        Matcher numericMatcher = numericPattern.matcher(json);
+        if (numericMatcher.find()) {
+            return numericMatcher.group(1);
+        }
+
+        Pattern arrayPattern = Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*\\[(.*?)\\]");
+        Matcher arrayMatcher = arrayPattern.matcher(json);
+        if (arrayMatcher.find()) {
+            return "[" + arrayMatcher.group(1).replace("\"", "") + "]";
+        }
+
+        return "null";
+    }
+
+    private Role parseRole(String role) {
+        if (role == null || role.isBlank()) {
+            throw new AuthException(HttpStatus.BAD_REQUEST, "El rol es obligatorio");
+        }
+
+        String normalized = role.trim().toUpperCase();
+        if (!normalized.startsWith("ROLE_")) {
+            normalized = "ROLE_" + normalized;
+        }
+
+        try {
+            return Role.valueOf(normalized);
+        } catch (IllegalArgumentException ex) {
+            throw new AuthException(HttpStatus.BAD_REQUEST, "Rol inválido. Usa ADMIN, MANAGER o VIEWER", ex);
+        }
     }
 }

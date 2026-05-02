@@ -3,6 +3,7 @@ package com.nuv.tfgrs.controller;
 import com.nuv.tfgrs.dto.request.ActualizarStockRequest;
 import com.nuv.tfgrs.dto.request.CrearProductoRequest;
 import com.nuv.tfgrs.dto.request.EditarProductoRequest;
+import com.nuv.tfgrs.dto.response.BundleUnlinkResponse;
 import com.nuv.tfgrs.dto.response.ProductoResponse;
 import com.nuv.tfgrs.service.ProductoService;
 import jakarta.validation.Valid;
@@ -56,6 +57,20 @@ public class ProductoController {
             @PathVariable Long id,
             @Valid @RequestBody ActualizarStockRequest request) {
         return ResponseEntity.ok(productoService.actualizarStock(id, request));
+    }
+
+    @GetMapping("/{id}/bundles")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<String>> listarBundlesVinculados(@PathVariable Long id) {
+        return ResponseEntity.ok(productoService.listarBundlesVinculados(id));
+    }
+
+    @DeleteMapping("/{id}/bundles")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<BundleUnlinkResponse> desvincularDeBundles(@PathVariable Long id) {
+        List<String> bundles = productoService.listarBundlesVinculados(id);
+        int removed = productoService.desvincularDeBundles(id);
+        return ResponseEntity.ok(new BundleUnlinkResponse(id, removed, bundles));
     }
 
     @DeleteMapping("/{id}")

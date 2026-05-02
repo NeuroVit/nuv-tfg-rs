@@ -2,6 +2,7 @@ package com.nuv.tfgrs.controller;
 
 import com.nuv.tfgrs.dto.request.AuthRequest;
 import com.nuv.tfgrs.dto.request.AuthRequest.GoogleAuthRequest;
+import com.nuv.tfgrs.dto.request.AuthRequest.SwitchRoleRequest;
 import com.nuv.tfgrs.dto.response.AuthResponse;
 import com.nuv.tfgrs.dto.response.AuthTokens;
 import com.nuv.tfgrs.service.AuthService;
@@ -12,6 +13,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -49,7 +52,7 @@ public class AuthController {
         writeRefreshCookie(response, tokens.refreshToken());
         return ResponseEntity.ok(tokens.authResponse());
     }
-    
+
     @PostMapping("/google/verify")
     public ResponseEntity<AuthResponse> googleLogin(
             @RequestBody GoogleAuthRequest request,
@@ -66,6 +69,18 @@ public class AuthController {
             HttpServletResponse response
     ) {
         AuthTokens tokens = authService.refresh(refreshToken);
+        writeRefreshCookie(response, tokens.refreshToken());
+        return ResponseEntity.ok(tokens.authResponse());
+    }
+
+    @PostMapping("/role")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<AuthResponse> cambiarRol(
+            @Valid @RequestBody SwitchRoleRequest request,
+            Authentication authentication,
+            HttpServletResponse response
+    ) {
+        AuthTokens tokens = authService.cambiarRolUsuarioActual(authentication.getName(), request.role());
         writeRefreshCookie(response, tokens.refreshToken());
         return ResponseEntity.ok(tokens.authResponse());
     }
