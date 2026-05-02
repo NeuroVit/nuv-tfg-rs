@@ -38,4 +38,9 @@ public class AuthRequest {
     ) {}
 
     public record GoogleAuthRequest(String credential) {}
+
+    public record SwitchRoleRequest(
+        @NotBlank
+        String role
+    ) {}
 }

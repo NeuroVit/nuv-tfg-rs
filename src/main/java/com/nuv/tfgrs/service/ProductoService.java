@@ -13,5 +13,7 @@ public interface ProductoService {
     ProductoResponse crear(CrearProductoRequest request);
     ProductoResponse actualizar(Long id, EditarProductoRequest request);
     ProductoResponse actualizarStock(Long id, ActualizarStockRequest request);
+    List<String> listarBundlesVinculados(Long id);
+    int desvincularDeBundles(Long id);
     void eliminar(Long id);
 }

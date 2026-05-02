@@ -14,8 +14,11 @@ import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.service.ProductoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,6 +34,7 @@ public class ProductoServiceImpl implements ProductoService {
     private final ProductoRepository productoRepository;
     private final CategoriaRepository categoriaRepository;
     private final MovimientoStockRepository movimientoStockRepository;
+    private final NamedParameterJdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional(readOnly = true)
@@ -159,10 +163,41 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional
     public void eliminar(Long id) {
-        if (!productoRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Producto no encontrado: " + id);
+        Producto producto = findOrThrow(id);
+        try {
+            productoRepository.delete(producto);
+            productoRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            String detail = resolveDeleteConstraintMessage(id, ex);
+            log.warn("No se pudo eliminar el producto {} por restricción de integridad", id);
+            log.debug("Detalle restricción al eliminar producto {}", id, ex);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, detail, ex);
         }
-        productoRepository.deleteById(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> listarBundlesVinculados(Long id) {
+        findOrThrow(id);
+        return findBundleNamesByProductId(id);
+    }
+
+    @Override
+    @Transactional
+    public int desvincularDeBundles(Long id) {
+        findOrThrow(id);
+        List<String> bundles = findBundleNamesByProductId(id);
+        if (bundles.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El producto no está asociado a ningún bundle");
+        }
+
+        String sql = "DELETE FROM bundle_items WHERE product_id = :productId";
+        MapSqlParameterSource params = new MapSqlParameterSource("productId", id);
+        int removed = jdbcTemplate.update(sql, params);
+
+        log.info("Producto desvinculado de bundles");
+        log.debug("Producto {} desvinculado de {} relación(es) en bundle_items", id, removed);
+        return removed;
     }
 
     private Producto findOrThrow(Long id) {
@@ -185,5 +220,38 @@ public class ProductoServiceImpl implements ProductoService {
         if (productoRepository.existsBySkuAndIdNot(sku, idProducto)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El SKU ya está en uso");
         }
+    }
+
+    private String resolveDeleteConstraintMessage(Long productId, DataIntegrityViolationException ex) {
+        String message = ex.getMostSpecificCause() != null
+                ? ex.getMostSpecificCause().getMessage()
+                : ex.getMessage();
+
+        if (message == null) {
+            return "No se puede eliminar el producto porque está referenciado por otros registros";
+        }
+
+        if (message.contains("fk_bundle_items_product")) {
+            List<String> bundles = findBundleNamesByProductId(productId);
+            if (bundles.isEmpty()) {
+                return "No se puede eliminar el producto porque está asociado a uno o más bundles";
+            }
+            String detail = String.join(", ", bundles);
+            return "No se puede eliminar el producto porque está asociado a bundles: " + detail;
+        }
+
+        return "No se puede eliminar el producto porque está referenciado por otros registros";
+    }
+
+    private List<String> findBundleNamesByProductId(Long productId) {
+        String sql = """
+                SELECT b.name
+                FROM bundles b
+                JOIN bundle_items bi ON bi.bundle_id = b.id
+                WHERE bi.product_id = :productId
+                ORDER BY b.name
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource("productId", productId);
+        return jdbcTemplate.queryForList(sql, params, String.class);
     }
 }

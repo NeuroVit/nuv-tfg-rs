@@ -11,8 +11,8 @@ spring:
 
   datasource:
     url: jdbc:mysql://localhost:3306/stock_manager
-    username: ${DB_USER:nuv-tfg}
-    password: ${DB_PASSWORD:0000}
+    username: ${DB_USER:${MYSQL_USER:nuv-tfg}}
+    password: ${DB_PASSWORD:${MYSQL_PASSWORD:0000}}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -49,6 +49,12 @@ google:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
 
+auth:
+  debug:
+    google: ${AUTH_DEBUG_GOOGLE:true}
+  role-switch:
+    enabled: ${AUTH_ROLE_SWITCH_ENABLED:true}
+
 rate-limit:
   auth:
     login:
@@ -59,3 +65,10 @@ rate-limit:
       capacity: ${RATE_LIMIT_AUTH_REGISTER_CAPACITY:5}
       refill-tokens: ${RATE_LIMIT_AUTH_REGISTER_REFILL_TOKENS:5}
       refill-seconds: ${RATE_LIMIT_AUTH_REGISTER_REFILL_SECONDS:60}
+
+logging:
+  level:
+    com.nuv.tfgrs.controller.AuthController: DEBUG
+    com.nuv.tfgrs.service.impl.AuthServiceImpl: DEBUG
+    org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
+    org.flywaydb.core.internal.database.base.Database: ERROR

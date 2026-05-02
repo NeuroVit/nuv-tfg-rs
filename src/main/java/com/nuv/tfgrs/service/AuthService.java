@@ -8,4 +8,5 @@ public interface AuthService {
     AuthTokens login(AuthRequest.Login request);
     AuthTokens loginConGoogle(String credential);
     AuthTokens refresh(String refreshToken);
+    AuthTokens cambiarRolUsuarioActual(String username, String role);
 }
