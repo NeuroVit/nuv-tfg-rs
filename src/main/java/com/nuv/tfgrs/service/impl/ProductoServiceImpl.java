@@ -83,7 +83,20 @@ public class ProductoServiceImpl implements ProductoService {
                 .updatedAt(LocalDateTime.now())
                 .build();
 
-        return ProductoResponse.from(productoRepository.save(producto));
+        Producto saved = productoRepository.save(producto);
+
+        if (saved.getCurrentQuantity() != null && saved.getCurrentQuantity() > 0) {
+            MovimientoStock movimientoInicial = MovimientoStock.builder()
+                    .product(saved)
+                    .delta(saved.getCurrentQuantity())
+                    .reason(MovimientoStock.Reason.INITIAL)
+                    .notes("Alta inicial de producto")
+                    .movedAt(LocalDateTime.now())
+                    .build();
+            movimientoStockRepository.save(movimientoInicial);
+        }
+
+        return ProductoResponse.from(saved);
     }
 
     @Override
