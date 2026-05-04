@@ -10,5 +10,6 @@ public record ProductoRequest(
     @NotNull @Min(0) Integer cantidadActual,
     @NotNull @Min(0) Integer nivelMinimoStock,
     @NotNull @DecimalMin("0.0") BigDecimal precioUnitario,
-    @NotNull Long categoriaId
+    @NotNull Long categoriaId,
+    @NotNull Long providerId
 ) {}

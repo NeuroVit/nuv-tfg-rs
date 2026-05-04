@@ -14,6 +14,8 @@ public record ProductoResponse(
     BigDecimal precioUnitario,
     Long categoriaId,
     String categoriaNombre,
+    Long providerId,
+    String providerNombre,
     Long version,
     LocalDateTime creadoEn,
     LocalDateTime actualizadoEn
@@ -29,6 +31,8 @@ public record ProductoResponse(
             p.getUnitPrice(),
             p.getCategory() != null ? p.getCategory().getId() : null,
             p.getCategory() != null ? p.getCategory().getName() : null,
+            p.getProvider() != null ? p.getProvider().getId() : null,
+            p.getProvider() != null ? p.getProvider().getName() : null,
             p.getVersion(),
             p.getCreatedAt(),
             p.getUpdatedAt()

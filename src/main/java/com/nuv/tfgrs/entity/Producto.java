@@ -50,6 +50,10 @@ public class Producto {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     private Categoria category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "provider_id", nullable = false)
+    private Proveedor provider;
  
     // Optimistic locking — incremented automatically by Hibernate on every update
     @Version

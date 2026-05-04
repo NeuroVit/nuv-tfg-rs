@@ -7,10 +7,12 @@ import com.nuv.tfgrs.dto.response.ProductoResponse;
 import com.nuv.tfgrs.entity.Categoria;
 import com.nuv.tfgrs.entity.MovimientoStock;
 import com.nuv.tfgrs.entity.Producto;
+import com.nuv.tfgrs.entity.Proveedor;
 import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.repository.CategoriaRepository;
 import com.nuv.tfgrs.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.repository.ProductoRepository;
+import com.nuv.tfgrs.repository.ProveedorRepository;
 import com.nuv.tfgrs.service.ProductoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,7 @@ public class ProductoServiceImpl implements ProductoService {
 
     private final ProductoRepository productoRepository;
     private final CategoriaRepository categoriaRepository;
+    private final ProveedorRepository proveedorRepository;
     private final MovimientoStockRepository movimientoStockRepository;
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -65,6 +68,7 @@ public class ProductoServiceImpl implements ProductoService {
     public ProductoResponse crear(CrearProductoRequest request) {
         validarSkuDisponibleParaCrear(request.sku());
         Categoria categoria = findCategoriaOrThrowBadRequest(request.categoriaId());
+        Proveedor proveedor = findProveedorActivoOrThrowBadRequest(request.providerId());
 
         var producto = Producto.builder()
                 .name(request.nombre())
@@ -74,6 +78,7 @@ public class ProductoServiceImpl implements ProductoService {
                 .minimumStockLevel(request.nivelMinimoStock())
                 .unitPrice(request.precioUnitario())
                 .category(categoria)
+                .provider(proveedor)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -115,6 +120,9 @@ public class ProductoServiceImpl implements ProductoService {
         }
         if (request.categoriaId() != null) {
             producto.setCategory(findCategoriaOrThrowBadRequest(request.categoriaId()));
+        }
+        if (request.providerId() != null) {
+            producto.setProvider(findProveedorActivoOrThrowBadRequest(request.providerId()));
         }
         producto.setUpdatedAt(LocalDateTime.now());
 
@@ -208,6 +216,15 @@ public class ProductoServiceImpl implements ProductoService {
     private Categoria findCategoriaOrThrowBadRequest(Long categoriaId) {
         return categoriaRepository.findById(categoriaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoría no encontrada"));
+    }
+
+    private Proveedor findProveedorActivoOrThrowBadRequest(Long providerId) {
+        Proveedor proveedor = proveedorRepository.findById(providerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Proveedor no encontrado"));
+        if (!Boolean.TRUE.equals(proveedor.getActive())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El proveedor no está activo");
+        }
+        return proveedor;
     }
 
     private void validarSkuDisponibleParaCrear(String sku) {

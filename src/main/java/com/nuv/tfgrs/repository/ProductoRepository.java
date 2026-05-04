@@ -18,4 +18,6 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
     List<Producto> findLowStockProducts();
     boolean existsBySku(String sku);
     boolean existsBySkuAndIdNot(String sku, Long id);
+    long countByProviderId(Long providerId);
+    List<Producto> findByProviderIdOrderByNameAsc(Long providerId);
 }
