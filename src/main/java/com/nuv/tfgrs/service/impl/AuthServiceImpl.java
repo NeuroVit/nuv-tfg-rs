@@ -9,6 +9,7 @@ import com.google.api.client.util.Base64;
 import com.nuv.tfgrs.dto.request.AuthRequest;
 import com.nuv.tfgrs.dto.response.AuthResponse;
 import com.nuv.tfgrs.dto.response.AuthTokens;
+import com.nuv.tfgrs.dto.response.UserProfileResponse;
 import com.nuv.tfgrs.entity.Usuario;
 import com.nuv.tfgrs.entity.Usuario.Role;
 import com.nuv.tfgrs.exception.AuthException;
@@ -20,6 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -48,6 +51,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final NamedParameterJdbcTemplate jdbcTemplate;
 
     @Value("${google.client-id}")
     private String googleClientId;
@@ -73,6 +77,7 @@ public class AuthServiceImpl implements AuthService {
                 .nombre(request.nombre())
                 .apellidos(request.apellidos())
                 .role(Usuario.Role.ROLE_VIEWER)
+                .active(true)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -153,6 +158,7 @@ public class AuthServiceImpl implements AuthService {
                         nuevo.setEmail(email);
                         nuevo.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
                         nuevo.setRole(Role.ROLE_VIEWER);
+                        nuevo.setActive(true);
                         nuevo.setCreatedAt(LocalDateTime.now());
                         nuevo.setUpdatedAt(LocalDateTime.now());
                         return nuevo;
@@ -220,13 +226,82 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
 
         Role nuevoRol = parseRole(role);
+        Role oldRole = usuario.getRole();
         usuario.setRole(nuevoRol);
         usuario.setUpdatedAt(LocalDateTime.now());
-        usuarioRepository.save(usuario);
+        Usuario saved = usuarioRepository.save(usuario);
+        recordRoleChange(saved.getId(), saved.getId(), oldRole, nuevoRol, "SELF_SWITCH");
 
         log.info("Rol de usuario actualizado");
         log.debug("Rol actualizado para {} -> {}", username, nuevoRol);
         return buildAuthTokens(usuario);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserProfileResponse perfilUsuarioActual(String username) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+        return UserProfileResponse.from(usuario);
+    }
+
+    @Override
+    @Transactional
+    public UserProfileResponse actualizarPerfilUsuarioActual(String username, AuthRequest.UpdateMeRequest request) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+
+        String normalizedEmail = request.email().trim().toLowerCase();
+        usuarioRepository.findByEmail(normalizedEmail)
+                .filter(existing -> !existing.getId().equals(usuario.getId()))
+                .ifPresent(existing -> {
+                    throw new AuthException(HttpStatus.CONFLICT, "El email ya está en uso");
+                });
+
+        usuario.setNombre(request.nombre().trim());
+        usuario.setApellidos(request.apellidos().trim());
+        usuario.setEmail(normalizedEmail);
+        usuario.setUpdatedAt(LocalDateTime.now());
+
+        Usuario saved = usuarioRepository.save(usuario);
+        return UserProfileResponse.from(saved);
+    }
+
+    @Override
+    @Transactional
+    public void cambiarPasswordUsuarioActual(String username, AuthRequest.ChangePasswordRequest request) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+
+        if (usuario.getPasswordHash() == null || usuario.getPasswordHash().isBlank()) {
+            throw new AuthException(HttpStatus.BAD_REQUEST, "Tu cuenta no tiene contraseña local configurada");
+        }
+
+        if (!passwordEncoder.matches(request.currentPassword(), usuario.getPasswordHash())) {
+            throw new AuthException(HttpStatus.BAD_REQUEST, "La contraseña actual es incorrecta");
+        }
+
+        if (request.currentPassword().equals(request.newPassword())) {
+            throw new AuthException(HttpStatus.BAD_REQUEST, "La nueva contraseña debe ser distinta a la actual");
+        }
+
+        usuario.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        usuario.setUpdatedAt(LocalDateTime.now());
+        usuarioRepository.save(usuario);
+    }
+
+    private void recordRoleChange(Long userId, Long changedBy, Role oldRole, Role newRole, String reason) {
+        String sql = """
+                INSERT INTO user_role_audit (user_id, changed_by, old_role, new_role, reason, changed_at)
+                VALUES (:userId, :changedBy, :oldRole, :newRole, :reason, NOW())
+                """;
+        jdbcTemplate.update(sql, new MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("changedBy", changedBy)
+                .addValue("oldRole", oldRole.name())
+                .addValue("newRole", newRole.name())
+                .addValue("reason", reason)
+        );
     }
 
     private AuthTokens buildAuthTokens(Usuario usuario) {

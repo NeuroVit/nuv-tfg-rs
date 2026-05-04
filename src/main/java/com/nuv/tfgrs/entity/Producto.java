@@ -46,6 +46,9 @@ public class Producto {
     @NotNull
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
+
+    @Column(name = "acquisition_price", precision = 10, scale = 2)
+    private BigDecimal acquisitionPrice;
  
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)

@@ -19,6 +19,8 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -117,7 +119,27 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         for (PedidoProveedorItemResponse item : order.items()) {
             Producto product = productoRepository.findById(item.productoId())
                     .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado: " + item.productoId()));
-            product.setCurrentQuantity(product.getCurrentQuantity() + item.cantidad());
+            int currentQty = product.getCurrentQuantity();
+            int incomingQty = item.cantidad();
+            int newQty = currentQty + incomingQty;
+
+            BigDecimal previousCost = product.getAcquisitionPrice() != null
+                    ? product.getAcquisitionPrice()
+                    : product.getUnitPrice();
+            BigDecimal incomingCost = item.precioUnitarioSnapshot();
+
+            BigDecimal weightedCost;
+            if (newQty <= 0) {
+                weightedCost = incomingCost;
+            } else {
+                BigDecimal totalCostBefore = previousCost.multiply(BigDecimal.valueOf(currentQty));
+                BigDecimal totalIncomingCost = incomingCost.multiply(BigDecimal.valueOf(incomingQty));
+                weightedCost = totalCostBefore.add(totalIncomingCost)
+                        .divide(BigDecimal.valueOf(newQty), 2, RoundingMode.HALF_UP);
+            }
+
+            product.setCurrentQuantity(newQty);
+            product.setAcquisitionPrice(weightedCost);
             product.setUpdatedAt(LocalDateTime.now());
             Producto saved = productoRepository.save(product);
 
@@ -179,15 +201,23 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     ) {
         String sql = """
                 INSERT INTO purchase_order_items (order_id, product_id, quantity, unit_price_snapshot)
-                VALUES (:orderId, :productId, :quantity, :unitPriceSnapshot)
+                VALUES (
+                    :orderId,
+                    :productId,
+                    :quantity,
+                    (
+                        SELECT COALESCE(p.acquisition_price, p.unit_price)
+                        FROM products p
+                        WHERE p.id = :productId
+                    )
+                )
                 """;
 
         MapSqlParameterSource[] batch = items.stream()
                 .map(item -> new MapSqlParameterSource()
                         .addValue("orderId", orderId)
                         .addValue("productId", item.productoId())
-                        .addValue("quantity", item.cantidad())
-                        .addValue("unitPriceSnapshot", productsById.get(item.productoId()).getUnitPrice()))
+                        .addValue("quantity", item.cantidad()))
                 .toArray(MapSqlParameterSource[]::new);
 
         jdbcTemplate.batchUpdate(sql, batch);

@@ -1,10 +1,13 @@
 package com.nuv.tfgrs.controller;
 
 import com.nuv.tfgrs.dto.request.AuthRequest;
+import com.nuv.tfgrs.dto.request.AuthRequest.ChangePasswordRequest;
 import com.nuv.tfgrs.dto.request.AuthRequest.GoogleAuthRequest;
 import com.nuv.tfgrs.dto.request.AuthRequest.SwitchRoleRequest;
+import com.nuv.tfgrs.dto.request.AuthRequest.UpdateMeRequest;
 import com.nuv.tfgrs.dto.response.AuthResponse;
 import com.nuv.tfgrs.dto.response.AuthTokens;
+import com.nuv.tfgrs.dto.response.UserProfileResponse;
 import com.nuv.tfgrs.service.AuthService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -83,6 +86,31 @@ public class AuthController {
         AuthTokens tokens = authService.cambiarRolUsuarioActual(authentication.getName(), request.role());
         writeRefreshCookie(response, tokens.refreshToken());
         return ResponseEntity.ok(tokens.authResponse());
+    }
+
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserProfileResponse> perfilActual(Authentication authentication) {
+        return ResponseEntity.ok(authService.perfilUsuarioActual(authentication.getName()));
+    }
+
+    @PutMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserProfileResponse> actualizarPerfilActual(
+            @Valid @RequestBody UpdateMeRequest request,
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(authService.actualizarPerfilUsuarioActual(authentication.getName(), request));
+    }
+
+    @PostMapping("/change-password")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> cambiarPasswordActual(
+            @Valid @RequestBody ChangePasswordRequest request,
+            Authentication authentication
+    ) {
+        authService.cambiarPasswordUsuarioActual(authentication.getName(), request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/logout")

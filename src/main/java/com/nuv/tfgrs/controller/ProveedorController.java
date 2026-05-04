@@ -2,6 +2,7 @@ package com.nuv.tfgrs.controller;
 
 import com.nuv.tfgrs.dto.request.CrearProveedorRequest;
 import com.nuv.tfgrs.dto.request.EditarProveedorRequest;
+import com.nuv.tfgrs.dto.response.ProveedorDetalleResponse;
 import com.nuv.tfgrs.dto.response.ProveedorResponse;
 import com.nuv.tfgrs.service.ProveedorService;
 import jakarta.validation.Valid;
@@ -26,6 +27,12 @@ public class ProveedorController {
             @RequestParam(name = "includeArchived", defaultValue = "false") boolean includeArchived
     ) {
         return ResponseEntity.ok(proveedorService.listar(includeArchived));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ProveedorDetalleResponse> detalle(@PathVariable Long id) {
+        return ResponseEntity.ok(proveedorService.detalle(id));
     }
 
     @PostMapping

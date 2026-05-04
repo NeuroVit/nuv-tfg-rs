@@ -43,4 +43,28 @@ public class AuthRequest {
         @NotBlank
         String role
     ) {}
+
+    public record UpdateMeRequest(
+        @NotBlank
+        String nombre,
+
+        @NotBlank
+        String apellidos,
+
+        @NotBlank @Email
+        String email
+    ) {}
+
+    public record ChangePasswordRequest(
+        @NotBlank
+        String currentPassword,
+
+        @NotBlank
+        @Size(min = 8, max = 100)
+        @Pattern(
+            regexp = "^(?=.*[A-Z])(?=.*\\d).+$",
+            message = "La contraseña debe incluir al menos una mayúscula y un número"
+        )
+        String newPassword
+    ) {}
 }

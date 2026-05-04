@@ -12,6 +12,7 @@ public record ProductoResponse(
     Integer cantidadActual,
     Integer nivelMinimoStock,
     BigDecimal precioUnitario,
+    BigDecimal costoUnitario,
     Long categoriaId,
     String categoriaNombre,
     Long providerId,
@@ -29,6 +30,27 @@ public record ProductoResponse(
             p.getCurrentQuantity(),
             p.getMinimumStockLevel(),
             p.getUnitPrice(),
+            null,
+            p.getCategory() != null ? p.getCategory().getId() : null,
+            p.getCategory() != null ? p.getCategory().getName() : null,
+            p.getProvider() != null ? p.getProvider().getId() : null,
+            p.getProvider() != null ? p.getProvider().getName() : null,
+            p.getVersion(),
+            p.getCreatedAt(),
+            p.getUpdatedAt()
+        );
+    }
+
+    public static ProductoResponse from(Producto p, BigDecimal costoUnitario) {
+        return new ProductoResponse(
+            p.getId(),
+            p.getName(),
+            p.getSku(),
+            p.getDescription(),
+            p.getCurrentQuantity(),
+            p.getMinimumStockLevel(),
+            p.getUnitPrice(),
+            costoUnitario,
             p.getCategory() != null ? p.getCategory().getId() : null,
             p.getCategory() != null ? p.getCategory().getName() : null,
             p.getProvider() != null ? p.getProvider().getId() : null,

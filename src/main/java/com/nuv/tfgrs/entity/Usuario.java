@@ -43,6 +43,9 @@ public class Usuario implements UserDetails {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean active;
  
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -64,6 +67,9 @@ public class Usuario implements UserDetails {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (active == null) {
+            active = true;
+        }
     }
  
     @PreUpdate
@@ -93,7 +99,9 @@ public class Usuario implements UserDetails {
     public boolean isCredentialsNonExpired() { return true; }
  
     @Override
-    public boolean isEnabled()            { return true; }
+    public boolean isEnabled() {
+        return Boolean.TRUE.equals(active);
+    }
  
     public enum Role {
         ROLE_ADMIN,

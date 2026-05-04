@@ -25,8 +25,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -42,25 +45,23 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductoResponse> listarTodos() {
-        return productoRepository.findAll()
-                .stream()
-                .map(ProductoResponse::from)
-                .toList();
+        List<Producto> products = productoRepository.findAll();
+        return mapWithLatestOrderCost(products);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ProductoResponse> listarBajoStock() {
-        return productoRepository.findLowStockProducts()
-                .stream()
-                .map(ProductoResponse::from)
-                .toList();
+        List<Producto> products = productoRepository.findLowStockProducts();
+        return mapWithLatestOrderCost(products);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ProductoResponse buscarPorId(Long id) {
-        return ProductoResponse.from(findOrThrow(id));
+        Producto product = findOrThrow(id);
+        BigDecimal cost = findLatestOrderCostByProductId(id);
+        return ProductoResponse.from(product, cost);
     }
 
     @Override
@@ -283,5 +284,81 @@ public class ProductoServiceImpl implements ProductoService {
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource("productId", productId);
         return jdbcTemplate.queryForList(sql, params, String.class);
+    }
+
+    private List<ProductoResponse> mapWithLatestOrderCost(List<Producto> products) {
+        if (products.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> productIds = products.stream().map(Producto::getId).toList();
+        Map<Long, BigDecimal> costByProductId = findLatestOrderCostsByProductIds(productIds);
+
+        return products.stream()
+                .map(product -> ProductoResponse.from(product, costByProductId.get(product.getId())))
+                .toList();
+    }
+
+    private BigDecimal findLatestOrderCostByProductId(Long productId) {
+        Map<Long, BigDecimal> map = findLatestOrderCostsByProductIds(List.of(productId));
+        return map.get(productId);
+    }
+
+    private Map<Long, BigDecimal> findLatestOrderCostsByProductIds(List<Long> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+
+        String sql = """
+                SELECT
+                    p.id AS product_id,
+                    COALESCE(ranked.unit_price_snapshot, p.acquisition_price) AS costo_unitario
+                FROM products p
+                LEFT JOIN (
+                    SELECT product_id, unit_price_snapshot
+                    FROM (
+                        SELECT
+                            poi.product_id,
+                            poi.unit_price_snapshot,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY poi.product_id
+                                ORDER BY
+                                po.received_at DESC,
+                                po.id DESC
+                            ) AS rn
+                        FROM purchase_order_items poi
+                        JOIN purchase_orders po ON po.id = poi.order_id
+                        WHERE poi.product_id IN (:productIds)
+                          AND po.status = 'RECEIVED'
+                    ) ranked_inner
+                    WHERE ranked_inner.rn = 1
+                ) ranked ON ranked.product_id = p.id
+                WHERE p.id IN (:productIds)
+                """;
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                sql,
+                new MapSqlParameterSource("productIds", productIds)
+        );
+
+        Map<Long, BigDecimal> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object productIdRaw = row.get("product_id");
+            Object priceRaw = row.get("costo_unitario");
+            if (!(productIdRaw instanceof Number productIdNumber)) {
+                continue;
+            }
+            Long productId = productIdNumber.longValue();
+
+            BigDecimal cost = null;
+            if (priceRaw instanceof BigDecimal price) {
+                cost = price;
+            } else if (priceRaw instanceof Number number) {
+                cost = BigDecimal.valueOf(number.doubleValue());
+            }
+            result.put(productId, cost);
+        }
+
+        return result;
     }
 }

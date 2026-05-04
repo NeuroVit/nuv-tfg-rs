@@ -10,6 +10,8 @@ public record MovimientoStockResponse(
         String productoSku,
         Integer cantidad,
         String tipo,
+        String razon,
+        String notas,
         LocalDateTime fecha
 ) {
     public static MovimientoStockResponse from(MovimientoStock movimiento) {
@@ -21,8 +23,9 @@ public record MovimientoStockResponse(
                 movimiento.getProduct().getSku(),
                 Math.abs(delta),
                 tipo,
+                movimiento.getReason() != null ? movimiento.getReason().name() : "ADJUSTMENT",
+                movimiento.getNotes(),
                 movimiento.getMovedAt()
         );
     }
 }
-
