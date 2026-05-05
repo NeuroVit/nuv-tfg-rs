@@ -201,26 +201,37 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     ) {
         String sql = """
                 INSERT INTO purchase_order_items (order_id, product_id, quantity, unit_price_snapshot)
-                VALUES (
-                    :orderId,
-                    :productId,
-                    :quantity,
-                    (
-                        SELECT COALESCE(p.acquisition_price, p.unit_price)
-                        FROM products p
-                        WHERE p.id = :productId
-                    )
-                )
+                VALUES (:orderId, :productId, :quantity, :unitPriceSnapshot)
                 """;
 
         MapSqlParameterSource[] batch = items.stream()
                 .map(item -> new MapSqlParameterSource()
                         .addValue("orderId", orderId)
                         .addValue("productId", item.productoId())
-                        .addValue("quantity", item.cantidad()))
+                        .addValue("quantity", item.cantidad())
+                        .addValue("unitPriceSnapshot", resolveOrderUnitCost(item, productsById)))
                 .toArray(MapSqlParameterSource[]::new);
 
         jdbcTemplate.batchUpdate(sql, batch);
+    }
+
+    private BigDecimal resolveOrderUnitCost(
+            CrearPedidoProveedorRequest.Item item,
+            Map<Long, Producto> productsById
+    ) {
+        if (item.precioUnitario() != null) {
+            return item.precioUnitario();
+        }
+
+        Producto product = productsById.get(item.productoId());
+        if (product == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uno o más productos no existen");
+        }
+
+        if (product.getAcquisitionPrice() != null) {
+            return product.getAcquisitionPrice();
+        }
+        return product.getUnitPrice();
     }
 
     private Map<Long, Producto> loadProductsMap(List<Long> productIds) {

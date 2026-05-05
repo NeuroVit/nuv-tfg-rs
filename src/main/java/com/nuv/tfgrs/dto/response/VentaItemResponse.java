@@ -7,6 +7,8 @@ public record VentaItemResponse(
         String productoNombre,
         String sku,
         Integer quantity,
+        BigDecimal listUnitPriceSnapshot,
+        BigDecimal discountPctSnapshot,
         BigDecimal unitPriceSnapshot,
         BigDecimal subtotal
 ) {

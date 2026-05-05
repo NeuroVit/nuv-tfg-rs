@@ -17,9 +17,11 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -340,6 +342,26 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         var cogsReal = asBigDecimal(cogsRow.get("cogs_real"));
         var margenReal = ventas.subtract(cogsReal);
 
+        long ventasCount = asLong(ventasRow.get("ventas_count"));
+        int periodDays = resolvePeriodDays(safeDays, params);
+        BigDecimal ticketPromedio = safeDivide(ventas, BigDecimal.valueOf(ventasCount), 2);
+        BigDecimal margenBrutoPct = safePercent(margenReal, ventas, 2);
+        BigDecimal markupPct = safePercent(margenReal, cogsReal, 2);
+        BigDecimal ventasPromedioDiarias = safeDivide(ventas, BigDecimal.valueOf(periodDays), 2);
+
+        BigDecimal inventarioInicialCosto = costoStock.subtract(compras).add(cogsReal);
+        if (inventarioInicialCosto.compareTo(BigDecimal.ZERO) < 0) {
+            inventarioInicialCosto = BigDecimal.ZERO;
+        }
+        BigDecimal inventarioPromedioCosto = inventarioInicialCosto
+                .add(costoStock)
+                .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+        BigDecimal rotacionInventario = safeDivide(cogsReal, inventarioPromedioCosto, 4);
+        BigDecimal diasInventario = rotacionInventario.compareTo(BigDecimal.ZERO) == 0
+                ? BigDecimal.ZERO
+                : BigDecimal.valueOf(periodDays).divide(rotacionInventario, 2, RoundingMode.HALF_UP);
+        BigDecimal gmroi = safeDivide(margenReal, inventarioPromedioCosto, 4);
+
         return new FinanzasResumenResponse(
                 safeDays == null ? 0 : safeDays,
                 ventas,
@@ -350,8 +372,16 @@ public class AnaliticaServiceImpl implements AnaliticaService {
                 valorStockVenta,
                 costoStock,
                 diferenciaStock,
-                asLong(ventasRow.get("ventas_count")),
-                asLong(comprasRow.get("ordenes_recibidas_count"))
+                ventasCount,
+                asLong(comprasRow.get("ordenes_recibidas_count")),
+                margenBrutoPct,
+                markupPct,
+                ticketPromedio,
+                inventarioPromedioCosto,
+                rotacionInventario,
+                diasInventario,
+                gmroi,
+                ventasPromedioDiarias
         );
     }
 
@@ -448,6 +478,44 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         if (value == null) return 0L;
         if (value instanceof Number number) return number.longValue();
         return 0L;
+    }
+
+    private int resolvePeriodDays(Integer safeDays, MapSqlParameterSource params) {
+        if (safeDays != null) {
+            return Math.max(safeDays, 1);
+        }
+
+        String sql = """
+                SELECT COALESCE(DATEDIFF(MAX(s.sold_at), MIN(s.sold_at)) + 1, 0) AS period_days
+                FROM sales s
+                """;
+        Long dbDays = asLong(jdbcTemplate.queryForMap(sql, params).get("period_days"));
+        if (dbDays <= 0) {
+            return 1;
+        }
+        return dbDays > Integer.MAX_VALUE ? Integer.MAX_VALUE : dbDays.intValue();
+    }
+
+    private BigDecimal safeDivide(BigDecimal numerator, BigDecimal denominator, int scale) {
+        if (denominator == null || denominator.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(scale, RoundingMode.HALF_UP);
+        }
+        if (numerator == null) {
+            return BigDecimal.ZERO.setScale(scale, RoundingMode.HALF_UP);
+        }
+        return numerator.divide(denominator, scale, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal safePercent(BigDecimal numerator, BigDecimal denominator, int scale) {
+        if (denominator == null || denominator.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(scale, RoundingMode.HALF_UP);
+        }
+        if (numerator == null) {
+            return BigDecimal.ZERO.setScale(scale, RoundingMode.HALF_UP);
+        }
+        return numerator
+                .multiply(BigDecimal.valueOf(100))
+                .divide(denominator, scale, RoundingMode.HALF_UP);
     }
 
     private Integer normalizeDays(Integer days) {

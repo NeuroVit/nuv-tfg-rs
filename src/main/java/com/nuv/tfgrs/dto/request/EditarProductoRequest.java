@@ -10,6 +10,7 @@ public record EditarProductoRequest(
         String sku,
         String descripcion,
         @Positive BigDecimal precioUnitario,
+        @Positive BigDecimal costoUnitario,
         @PositiveOrZero Integer cantidadActual,
         @PositiveOrZero Integer nivelMinimoStock,
         Long categoriaId,

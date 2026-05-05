@@ -10,6 +10,9 @@ public record VentaResponse(
         String clientName,
         LocalDateTime soldAt,
         String notas,
+        BigDecimal subtotalAmount,
+        BigDecimal discountTotalAmount,
+        BigDecimal globalDiscountPct,
         BigDecimal totalAmount,
         LocalDateTime createdAt,
         List<VentaItemResponse> items

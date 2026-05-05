@@ -12,6 +12,7 @@ public record CrearProductoRequest(
         @NotBlank String sku,
         String descripcion,
         @NotNull @Positive BigDecimal precioUnitario,
+        @Positive BigDecimal costoUnitario,
         @NotNull @PositiveOrZero Integer cantidadActual,
         @NotNull @PositiveOrZero Integer nivelMinimoStock,
         @NotNull Long categoriaId,

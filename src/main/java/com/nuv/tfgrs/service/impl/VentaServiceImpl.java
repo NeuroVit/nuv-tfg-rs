@@ -22,10 +22,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +36,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class VentaServiceImpl implements VentaService {
+
+    private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final ClienteRepository clienteRepository;
@@ -58,6 +62,9 @@ public class VentaServiceImpl implements VentaService {
                 header.clientName,
                 header.soldAt,
                 header.notes,
+                header.subtotalAmount,
+                header.discountTotalAmount,
+                header.globalDiscountPct,
                 header.totalAmount,
                 header.createdAt,
                 itemsBySaleId.getOrDefault(header.id, List.of())
@@ -67,75 +74,247 @@ public class VentaServiceImpl implements VentaService {
     @Override
     @Transactional
     public VentaResponse crear(CrearVentaRequest request, String actorUsername) {
-        if (!clienteRepository.existsById(request.clientId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cliente no encontrado");
+        if (!clienteRepository.existsByIdAndActiveTrue(request.clientId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cliente no encontrado o inactivo");
         }
 
-        List<CrearVentaRequest.Item> requestItems = request.items();
-        if (requestItems == null || requestItems.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La venta debe incluir al menos un producto");
+        List<CrearVentaRequest.Item> directItems = request.items() == null ? List.of() : request.items();
+        List<CrearVentaRequest.BundleItem> bundleItems = request.bundles() == null ? List.of() : request.bundles();
+
+        if (directItems.isEmpty() && bundleItems.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La venta debe incluir al menos un producto o un bundle");
         }
 
-        Set<Long> uniqueProductIds = new HashSet<>();
-        for (CrearVentaRequest.Item item : requestItems) {
-            if (!uniqueProductIds.add(item.productId())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede repetir un producto en la venta");
-            }
-        }
+        validateNoRepeatedProductsInDirectItems(directItems);
+        validateNoRepeatedBundles(bundleItems);
 
-        Map<Long, Producto> productsById = productoRepository.findAllById(uniqueProductIds)
+        Map<Long, BundleDefinition> bundlesById = loadBundleDefinitions(bundleItems);
+
+        Set<Long> allProductIds = new HashSet<>();
+        directItems.forEach(item -> allProductIds.add(item.productId()));
+        bundlesById.values().forEach(bundle -> bundle.components().forEach(component -> allProductIds.add(component.productId())));
+
+        Map<Long, Producto> productsById = productoRepository.findAllById(allProductIds)
                 .stream()
                 .collect(Collectors.toMap(Producto::getId, p -> p));
 
-        if (productsById.size() != uniqueProductIds.size()) {
+        if (productsById.size() != allProductIds.size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uno o más productos no existen");
         }
 
-        BigDecimal total = BigDecimal.ZERO;
-        for (CrearVentaRequest.Item item : requestItems) {
+        BigDecimal globalDiscountPct = normalizePct(request.descuentoPctGlobal());
+        List<LineCandidate> candidates = new ArrayList<>();
+
+        for (CrearVentaRequest.Item item : directItems) {
             Producto product = productsById.get(item.productId());
-            if (product.getCurrentQuantity() < item.quantity()) {
+            BigDecimal lineDiscountPct = normalizePct(item.descuentoPct());
+            candidates.add(new LineCandidate(
+                    product.getId(),
+                    item.quantity(),
+                    product.getUnitPrice(),
+                    lineDiscountPct,
+                    resolveUnitCost(product)
+            ));
+        }
+
+        for (CrearVentaRequest.BundleItem bundleItem : bundleItems) {
+            BundleDefinition bundle = bundlesById.get(bundleItem.bundleId());
+            if (bundle == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bundle no encontrado: " + bundleItem.bundleId());
+            }
+
+            BigDecimal bundleDiscountPct = bundleItem.descuentoPctOverride() != null
+                    ? normalizePct(bundleItem.descuentoPctOverride())
+                    : normalizePct(bundle.discountPct());
+
+            for (BundleComponent component : bundle.components()) {
+                Producto product = productsById.get(component.productId());
+                int quantity = Math.multiplyExact(bundleItem.quantity(), component.quantity());
+                candidates.add(new LineCandidate(
+                        product.getId(),
+                        quantity,
+                        product.getUnitPrice(),
+                        bundleDiscountPct,
+                        resolveUnitCost(product)
+                ));
+            }
+        }
+
+        Map<Long, ProductSaleAccumulator> saleByProduct = aggregateCandidates(candidates, globalDiscountPct);
+        validateStockAvailability(saleByProduct, productsById);
+
+        List<SaleItemInsert> saleItemsToInsert = buildSaleItemsForInsert(saleByProduct);
+        BigDecimal subtotalAmount = sumListAmounts(saleItemsToInsert);
+        BigDecimal totalAmount = sumNetAmounts(saleItemsToInsert);
+        BigDecimal discountTotalAmount = subtotalAmount.subtract(totalAmount).setScale(2, RoundingMode.HALF_UP);
+
+        Long createdBy = usuarioRepository.findByUsername(actorUsername).map(Usuario::getId).orElse(null);
+        Long saleId = insertSale(
+                request.clientId(),
+                request.notas(),
+                subtotalAmount,
+                discountTotalAmount,
+                globalDiscountPct,
+                totalAmount,
+                createdBy
+        );
+
+        insertSaleItems(saleId, saleItemsToInsert);
+        updateStockAndCreateMovements(saleId, saleByProduct, productsById);
+
+        return fetchSaleById(saleId);
+    }
+
+    private Map<Long, ProductSaleAccumulator> aggregateCandidates(
+            List<LineCandidate> candidates,
+            BigDecimal globalDiscountPct
+    ) {
+        Map<Long, ProductSaleAccumulator> byProduct = new LinkedHashMap<>();
+
+        for (LineCandidate candidate : candidates) {
+            BigDecimal unitAfterItemDiscount = applyDiscount(candidate.unitListPrice(), candidate.lineDiscountPct());
+            BigDecimal unitAfterGlobalDiscount = applyDiscount(unitAfterItemDiscount, globalDiscountPct);
+
+            BigDecimal qty = BigDecimal.valueOf(candidate.quantity());
+            BigDecimal listAmount = candidate.unitListPrice().multiply(qty);
+            BigDecimal netAmount = unitAfterGlobalDiscount.multiply(qty);
+
+            ProductSaleAccumulator current = byProduct.computeIfAbsent(
+                    candidate.productId(),
+                    ignored -> new ProductSaleAccumulator(candidate.productId(), candidate.unitListPrice(), candidate.unitCost())
+            );
+
+            current.quantity += candidate.quantity();
+            current.listAmount = current.listAmount.add(listAmount);
+            current.netAmount = current.netAmount.add(netAmount);
+        }
+
+        return byProduct;
+    }
+
+    private void validateStockAvailability(
+            Map<Long, ProductSaleAccumulator> saleByProduct,
+            Map<Long, Producto> productsById
+    ) {
+        for (ProductSaleAccumulator row : saleByProduct.values()) {
+            Producto product = productsById.get(row.productId);
+            if (product.getCurrentQuantity() < row.quantity) {
                 throw new ResponseStatusException(
                         HttpStatus.CONFLICT,
                         "Stock insuficiente para " + product.getName() + ". Disponible=" + product.getCurrentQuantity()
                 );
             }
-            total = total.add(product.getUnitPrice().multiply(BigDecimal.valueOf(item.quantity())));
+        }
+    }
+
+    private List<SaleItemInsert> buildSaleItemsForInsert(Map<Long, ProductSaleAccumulator> saleByProduct) {
+        List<SaleItemInsert> result = new ArrayList<>();
+
+        for (ProductSaleAccumulator row : saleByProduct.values()) {
+            BigDecimal qty = BigDecimal.valueOf(row.quantity);
+            BigDecimal listUnitPrice = row.unitListPrice.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal netUnitPrice = row.netAmount.divide(qty, 2, RoundingMode.HALF_UP);
+
+            // Keep totals aligned with what is persisted/displayed per line (qty * rounded unit price).
+            BigDecimal listAmountRounded = listUnitPrice.multiply(qty).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal netAmountRounded = netUnitPrice.multiply(qty).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal discountAmount = listAmountRounded.subtract(netAmountRounded);
+            BigDecimal discountPct = safePercent(discountAmount, listAmountRounded);
+
+            result.add(new SaleItemInsert(
+                    row.productId,
+                    row.quantity,
+                    listUnitPrice,
+                    discountPct,
+                    netUnitPrice,
+                    row.unitCost,
+                    listAmountRounded,
+                    netAmountRounded
+            ));
         }
 
-        Long createdBy = usuarioRepository.findByUsername(actorUsername).map(Usuario::getId).orElse(null);
-        Long saleId = insertSale(request.clientId(), request.notas(), total, createdBy);
-        insertSaleItems(saleId, requestItems, productsById);
+        return result;
+    }
 
-        for (CrearVentaRequest.Item item : requestItems) {
-            Producto product = productsById.get(item.productId());
-            product.setCurrentQuantity(product.getCurrentQuantity() - item.quantity());
+    private BigDecimal sumListAmounts(List<SaleItemInsert> rows) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (SaleItemInsert row : rows) {
+            total = total.add(row.listAmount());
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal sumNetAmounts(List<SaleItemInsert> rows) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (SaleItemInsert row : rows) {
+            total = total.add(row.netAmount());
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void updateStockAndCreateMovements(
+            Long saleId,
+            Map<Long, ProductSaleAccumulator> saleByProduct,
+            Map<Long, Producto> productsById
+    ) {
+        for (ProductSaleAccumulator row : saleByProduct.values()) {
+            Producto product = productsById.get(row.productId);
+            product.setCurrentQuantity(product.getCurrentQuantity() - row.quantity);
             product.setUpdatedAt(LocalDateTime.now());
             Producto saved = productoRepository.save(product);
 
             MovimientoStock movement = MovimientoStock.builder()
                     .product(saved)
-                    .delta(-item.quantity())
+                    .delta(-row.quantity)
                     .reason(MovimientoStock.Reason.SALE)
                     .notes("Venta #" + saleId)
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movement);
         }
-
-        return fetchSaleById(saleId);
     }
 
-    private Long insertSale(Long clientId, String notes, BigDecimal total, Long createdBy) {
+    private Long insertSale(
+            Long clientId,
+            String notes,
+            BigDecimal subtotalAmount,
+            BigDecimal discountTotalAmount,
+            BigDecimal globalDiscountPct,
+            BigDecimal total,
+            Long createdBy
+    ) {
         String sql = """
-                INSERT INTO sales (client_id, sold_at, notes, total_amount, created_by, created_at)
-                VALUES (:clientId, NOW(), :notes, :totalAmount, :createdBy, NOW())
+                INSERT INTO sales (
+                    client_id,
+                    sold_at,
+                    notes,
+                    subtotal_amount,
+                    discount_total_amount,
+                    global_discount_pct,
+                    total_amount,
+                    created_by,
+                    created_at
+                )
+                VALUES (
+                    :clientId,
+                    NOW(),
+                    :notes,
+                    :subtotalAmount,
+                    :discountTotalAmount,
+                    :globalDiscountPct,
+                    :totalAmount,
+                    :createdBy,
+                    NOW()
+                )
                 """;
 
         GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(sql, new MapSqlParameterSource()
                 .addValue("clientId", clientId)
                 .addValue("notes", normalizeNotes(notes))
+                .addValue("subtotalAmount", subtotalAmount)
+                .addValue("discountTotalAmount", discountTotalAmount)
+                .addValue("globalDiscountPct", globalDiscountPct)
                 .addValue("totalAmount", total)
                 .addValue("createdBy", createdBy), keyHolder, new String[]{"id"});
 
@@ -146,23 +325,155 @@ public class VentaServiceImpl implements VentaService {
         return key.longValue();
     }
 
-    private void insertSaleItems(Long saleId, List<CrearVentaRequest.Item> items, Map<Long, Producto> productsById) {
+    private void insertSaleItems(Long saleId, List<SaleItemInsert> rows) {
         String sql = """
-                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price_snapshot, cost_price_snapshot)
-                VALUES (:saleId, :productId, :quantity, :price, :cost)
+                INSERT INTO sale_items (
+                    sale_id,
+                    product_id,
+                    quantity,
+                    list_unit_price_snapshot,
+                    discount_pct_snapshot,
+                    unit_price_snapshot,
+                    cost_price_snapshot
+                )
+                VALUES (
+                    :saleId,
+                    :productId,
+                    :quantity,
+                    :listUnitPrice,
+                    :discountPct,
+                    :netUnitPrice,
+                    :unitCost
+                )
                 """;
 
-        MapSqlParameterSource[] batch = items.stream()
-                .map(item -> new MapSqlParameterSource()
+        MapSqlParameterSource[] batch = rows.stream()
+                .map(row -> new MapSqlParameterSource()
                         .addValue("saleId", saleId)
-                        .addValue("productId", item.productId())
-                        .addValue("quantity", item.quantity())
-                        .addValue("price", productsById.get(item.productId()).getUnitPrice())
-                        .addValue("cost", resolveUnitCost(productsById.get(item.productId())))
+                        .addValue("productId", row.productId())
+                        .addValue("quantity", row.quantity())
+                        .addValue("listUnitPrice", row.listUnitPrice())
+                        .addValue("discountPct", row.discountPct())
+                        .addValue("netUnitPrice", row.netUnitPrice())
+                        .addValue("unitCost", row.unitCost())
                 )
                 .toArray(MapSqlParameterSource[]::new);
 
         jdbcTemplate.batchUpdate(sql, batch);
+    }
+
+    private Map<Long, BundleDefinition> loadBundleDefinitions(List<CrearVentaRequest.BundleItem> bundleItems) {
+        if (bundleItems.isEmpty()) {
+            return Map.of();
+        }
+
+        Set<Long> bundleIds = bundleItems.stream().map(CrearVentaRequest.BundleItem::bundleId).collect(Collectors.toSet());
+
+        String sql = """
+                SELECT
+                    b.id AS bundle_id,
+                    b.name AS bundle_name,
+                    b.discount_pct,
+                    b.active,
+                    bi.product_id,
+                    bi.quantity
+                FROM bundles b
+                LEFT JOIN bundle_items bi ON bi.bundle_id = b.id
+                WHERE b.id IN (:bundleIds)
+                ORDER BY b.id
+                """;
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, new MapSqlParameterSource("bundleIds", bundleIds));
+
+        Map<Long, MutableBundleDefinition> mutable = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Long bundleId = asLong(row.get("bundle_id"));
+            MutableBundleDefinition current = mutable.computeIfAbsent(
+                    bundleId,
+                    ignored -> new MutableBundleDefinition(
+                            bundleId,
+                            (String) row.get("bundle_name"),
+                            asBigDecimal(row.get("discount_pct")),
+                            asBoolean(row.get("active"))
+                    )
+            );
+
+            Long productId = asLong(row.get("product_id"));
+            Integer quantity = asInteger(row.get("quantity"));
+            if (productId != null && quantity != null) {
+                if (quantity <= 0) {
+                    throw new ResponseStatusException(
+                            HttpStatus.CONFLICT,
+                            "El bundle contiene una cantidad inválida para el producto " + productId
+                    );
+                }
+                current.components.add(new BundleComponent(productId, quantity));
+            }
+        }
+
+        for (Long requestedId : bundleIds) {
+            if (!mutable.containsKey(requestedId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bundle no encontrado: " + requestedId);
+            }
+        }
+
+        Map<Long, BundleDefinition> result = new LinkedHashMap<>();
+        for (MutableBundleDefinition item : mutable.values()) {
+            if (!item.active) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "El bundle está inactivo: " + item.name);
+            }
+            if (item.components.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "El bundle no contiene productos: " + item.name);
+            }
+            result.put(item.id, new BundleDefinition(item.id, item.name, item.discountPct, List.copyOf(item.components)));
+        }
+
+        return result;
+    }
+
+    private void validateNoRepeatedProductsInDirectItems(List<CrearVentaRequest.Item> items) {
+        Set<Long> uniqueProductIds = new HashSet<>();
+        for (CrearVentaRequest.Item item : items) {
+            if (!uniqueProductIds.add(item.productId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede repetir un producto en la venta");
+            }
+        }
+    }
+
+    private void validateNoRepeatedBundles(List<CrearVentaRequest.BundleItem> bundles) {
+        Set<Long> uniqueBundleIds = new HashSet<>();
+        for (CrearVentaRequest.BundleItem bundle : bundles) {
+            if (!uniqueBundleIds.add(bundle.bundleId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede repetir un bundle en la venta");
+            }
+        }
+    }
+
+    private BigDecimal applyDiscount(BigDecimal amount, BigDecimal discountPct) {
+        BigDecimal normalizedAmount = amount == null ? BigDecimal.ZERO : amount;
+        BigDecimal pct = normalizePct(discountPct);
+        BigDecimal factor = BigDecimal.ONE.subtract(pct.divide(ONE_HUNDRED, 6, RoundingMode.HALF_UP));
+        return normalizedAmount.multiply(factor);
+    }
+
+    private BigDecimal normalizePct(BigDecimal pct) {
+        if (pct == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        if (pct.compareTo(BigDecimal.ZERO) < 0 || pct.compareTo(ONE_HUNDRED) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El descuento debe estar entre 0 y 100");
+        }
+        return pct.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal safePercent(BigDecimal value, BigDecimal base) {
+        if (base == null || base.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return value.multiply(ONE_HUNDRED).divide(base, 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal resolveUnitCost(Producto product) {
@@ -180,6 +491,9 @@ public class VentaServiceImpl implements VentaService {
                     c.name AS client_name,
                     s.sold_at,
                     s.notes,
+                    s.subtotal_amount,
+                    s.discount_total_amount,
+                    s.global_discount_pct,
                     s.total_amount,
                     s.created_at
                 FROM sales s
@@ -201,6 +515,9 @@ public class VentaServiceImpl implements VentaService {
                 rs.getString("client_name"),
                 rs.getTimestamp("sold_at").toLocalDateTime(),
                 rs.getString("notes"),
+                rs.getBigDecimal("subtotal_amount"),
+                rs.getBigDecimal("discount_total_amount"),
+                rs.getBigDecimal("global_discount_pct"),
                 rs.getBigDecimal("total_amount"),
                 rs.getTimestamp("created_at").toLocalDateTime()
         ));
@@ -214,6 +531,9 @@ public class VentaServiceImpl implements VentaService {
                     c.name AS client_name,
                     s.sold_at,
                     s.notes,
+                    s.subtotal_amount,
+                    s.discount_total_amount,
+                    s.global_discount_pct,
                     s.total_amount,
                     s.created_at
                 FROM sales s
@@ -228,6 +548,9 @@ public class VentaServiceImpl implements VentaService {
                         rs.getString("client_name"),
                         rs.getTimestamp("sold_at").toLocalDateTime(),
                         rs.getString("notes"),
+                        rs.getBigDecimal("subtotal_amount"),
+                        rs.getBigDecimal("discount_total_amount"),
+                        rs.getBigDecimal("global_discount_pct"),
                         rs.getBigDecimal("total_amount"),
                         rs.getTimestamp("created_at").toLocalDateTime()
                 )
@@ -245,6 +568,9 @@ public class VentaServiceImpl implements VentaService {
                 row.clientName,
                 row.soldAt,
                 row.notes,
+                row.subtotalAmount,
+                row.discountTotalAmount,
+                row.globalDiscountPct,
                 row.totalAmount,
                 row.createdAt,
                 itemsBySale.getOrDefault(saleId, List.of())
@@ -263,6 +589,8 @@ public class VentaServiceImpl implements VentaService {
                     p.name AS product_name,
                     p.sku,
                     si.quantity,
+                    si.list_unit_price_snapshot,
+                    si.discount_pct_snapshot,
                     si.unit_price_snapshot
                 FROM sale_items si
                 JOIN products p ON p.id = si.product_id
@@ -277,15 +605,19 @@ public class VentaServiceImpl implements VentaService {
             Long saleId = ((Number) row.get("sale_id")).longValue();
             Long productId = ((Number) row.get("product_id")).longValue();
             Integer quantity = ((Number) row.get("quantity")).intValue();
-            BigDecimal unitPrice = (BigDecimal) row.get("unit_price_snapshot");
+            BigDecimal listUnitPrice = asBigDecimal(row.get("list_unit_price_snapshot"));
+            BigDecimal discountPct = asBigDecimal(row.get("discount_pct_snapshot"));
+            BigDecimal unitPrice = asBigDecimal(row.get("unit_price_snapshot"));
 
             grouped.computeIfAbsent(saleId, ignored -> new ArrayList<>()).add(new VentaItemResponse(
                     productId,
                     (String) row.get("product_name"),
                     (String) row.get("sku"),
                     quantity,
+                    listUnitPrice,
+                    discountPct,
                     unitPrice,
-                    unitPrice.multiply(BigDecimal.valueOf(quantity))
+                    unitPrice.multiply(BigDecimal.valueOf(quantity)).setScale(2, RoundingMode.HALF_UP)
             ));
         }
 
@@ -298,14 +630,105 @@ public class VentaServiceImpl implements VentaService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    private BigDecimal asBigDecimal(Object value) {
+        if (value == null) return BigDecimal.ZERO;
+        if (value instanceof BigDecimal decimal) return decimal;
+        if (value instanceof Number number) return BigDecimal.valueOf(number.doubleValue());
+        return BigDecimal.ZERO;
+    }
+
+    private Long asLong(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) return number.longValue();
+        return null;
+    }
+
+    private Integer asInteger(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) return number.intValue();
+        return null;
+    }
+
+    private boolean asBoolean(Object value) {
+        if (value instanceof Boolean b) return b;
+        if (value instanceof Number number) return number.intValue() != 0;
+        if (value instanceof String text) return "true".equalsIgnoreCase(text) || "1".equals(text);
+        return false;
+    }
+
     private record VentaHeaderRow(
             Long id,
             Long clientId,
             String clientName,
             LocalDateTime soldAt,
             String notes,
+            BigDecimal subtotalAmount,
+            BigDecimal discountTotalAmount,
+            BigDecimal globalDiscountPct,
             BigDecimal totalAmount,
             LocalDateTime createdAt
+    ) {
+    }
+
+    private record LineCandidate(
+            Long productId,
+            Integer quantity,
+            BigDecimal unitListPrice,
+            BigDecimal lineDiscountPct,
+            BigDecimal unitCost
+    ) {
+    }
+
+    private record BundleComponent(Long productId, Integer quantity) {
+    }
+
+    private record BundleDefinition(
+            Long id,
+            String name,
+            BigDecimal discountPct,
+            List<BundleComponent> components
+    ) {
+    }
+
+    private static final class MutableBundleDefinition {
+        private final Long id;
+        private final String name;
+        private final BigDecimal discountPct;
+        private final boolean active;
+        private final List<BundleComponent> components = new ArrayList<>();
+
+        private MutableBundleDefinition(Long id, String name, BigDecimal discountPct, boolean active) {
+            this.id = id;
+            this.name = name;
+            this.discountPct = discountPct;
+            this.active = active;
+        }
+    }
+
+    private static final class ProductSaleAccumulator {
+        private final Long productId;
+        private final BigDecimal unitListPrice;
+        private final BigDecimal unitCost;
+        private int quantity = 0;
+        private BigDecimal listAmount = BigDecimal.ZERO;
+        private BigDecimal netAmount = BigDecimal.ZERO;
+
+        private ProductSaleAccumulator(Long productId, BigDecimal unitListPrice, BigDecimal unitCost) {
+            this.productId = productId;
+            this.unitListPrice = unitListPrice;
+            this.unitCost = unitCost;
+        }
+    }
+
+    private record SaleItemInsert(
+            Long productId,
+            Integer quantity,
+            BigDecimal listUnitPrice,
+            BigDecimal discountPct,
+            BigDecimal netUnitPrice,
+            BigDecimal unitCost,
+            BigDecimal listAmount,
+            BigDecimal netAmount
     ) {
     }
 }

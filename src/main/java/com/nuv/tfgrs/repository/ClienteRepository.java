@@ -13,4 +13,5 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     List<Cliente> findByActiveTrueOrderByNameAsc();
     Optional<Cliente> findByEmail(String email);
     boolean existsByEmailAndIdNot(String email, Long id);
+    boolean existsByIdAndActiveTrue(Long id);
 }

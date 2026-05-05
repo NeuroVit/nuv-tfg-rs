@@ -78,6 +78,7 @@ public class ProductoServiceImpl implements ProductoService {
                 .currentQuantity(request.cantidadActual())
                 .minimumStockLevel(request.nivelMinimoStock())
                 .unitPrice(request.precioUnitario())
+                .acquisitionPrice(request.costoUnitario())
                 .category(categoria)
                 .provider(proveedor)
                 .createdAt(LocalDateTime.now())
@@ -131,6 +132,9 @@ public class ProductoServiceImpl implements ProductoService {
         }
         if (request.precioUnitario() != null) {
             producto.setUnitPrice(request.precioUnitario());
+        }
+        if (request.costoUnitario() != null) {
+            producto.setAcquisitionPrice(request.costoUnitario());
         }
         if (request.categoriaId() != null) {
             producto.setCategory(findCategoriaOrThrowBadRequest(request.categoriaId()));

@@ -13,6 +13,14 @@ public record FinanzasResumenResponse(
         BigDecimal costoStockReal,
         BigDecimal diferenciaValorVsCosto,
         Long ventasCount30d,
-        Long ordenesRecibidasCount30d
+        Long ordenesRecibidasCount30d,
+        BigDecimal margenBrutoPct,
+        BigDecimal markupPct,
+        BigDecimal ticketPromedio,
+        BigDecimal inventarioPromedioCosto,
+        BigDecimal rotacionInventario,
+        BigDecimal diasInventario,
+        BigDecimal gmroi,
+        BigDecimal ventasPromedioDiarias
 ) {
 }
