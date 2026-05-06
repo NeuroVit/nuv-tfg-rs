@@ -3,6 +3,7 @@ package com.nuv.tfgrs.controller;
 import com.nuv.tfgrs.dto.response.BundleCandidateRowResponse;
 import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
+import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
 import com.nuv.tfgrs.dto.response.SalesVelocityRowResponse;
@@ -103,5 +104,13 @@ public class AnaliticaController {
             @RequestParam(name = "limit", defaultValue = "12") int limit
     ) {
         return ResponseEntity.ok(analiticaService.rentabilidadProductos(days, limit));
+    }
+
+    @GetMapping("/meta")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<AnaliticaMetaResponse> metadata(
+            @RequestParam(name = "days", defaultValue = "30") int days
+    ) {
+        return ResponseEntity.ok(analiticaService.metadata(days));
     }
 }
