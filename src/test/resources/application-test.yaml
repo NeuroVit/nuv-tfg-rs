@@ -34,6 +34,9 @@ auth:
   role-switch:
     enabled: true
 
+google:
+  client-id: test-google-client-id
+
 rate-limit:
   auth:
     login:
