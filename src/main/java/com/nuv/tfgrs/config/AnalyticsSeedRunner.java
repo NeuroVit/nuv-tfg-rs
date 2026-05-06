@@ -6,6 +6,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -16,6 +17,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 
 @Component
+@Profile("!test")
 @ConditionalOnProperty(prefix = "analytics.seed", name = "enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Slf4j
