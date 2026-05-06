@@ -3,6 +3,7 @@ package com.nuv.tfgrs.service;
 import com.nuv.tfgrs.dto.response.BundleCandidateRowResponse;
 import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
+import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
 import com.nuv.tfgrs.dto.response.SalesVelocityRowResponse;
@@ -24,4 +25,5 @@ public interface AnaliticaService {
     List<StockPorCategoriaRowResponse> stockPorCategoria();
     FinanzasResumenResponse finanzasResumen(int days);
     List<RentabilidadProductoRowResponse> rentabilidadProductos(int days, int limit);
+    AnaliticaMetaResponse metadata(int days);
 }

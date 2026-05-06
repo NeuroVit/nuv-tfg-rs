@@ -3,6 +3,7 @@ package com.nuv.tfgrs.service.impl;
 import com.nuv.tfgrs.dto.response.BundleCandidateRowResponse;
 import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
+import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
 import com.nuv.tfgrs.dto.response.SalesVelocityRowResponse;
@@ -12,6 +13,7 @@ import com.nuv.tfgrs.dto.response.TopProductoVelocidadRowResponse;
 import com.nuv.tfgrs.dto.response.VelocidadResumenRowResponse;
 import com.nuv.tfgrs.service.AnaliticaService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -19,15 +21,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
 public class AnaliticaServiceImpl implements AnaliticaService {
 
+    private static final String ANALYTICS_SEED_KEY = "analytics_seed_v2";
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    @Value("${analytics.seed.enabled:false}")
+    private boolean analyticsSeedEnabled;
 
     @Override
     @Transactional(readOnly = true)
@@ -467,6 +476,43 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         ));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public AnaliticaMetaResponse metadata(int days) {
+        Integer safeDays = normalizeDays(days);
+        int resolvedWindowDays = safeDays == null ? 0 : safeDays;
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        if (safeDays != null) {
+            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+        }
+
+        String salesSql = safeDays == null
+                ? "SELECT MAX(sold_at) AS latest FROM sales"
+                : "SELECT MAX(sold_at) AS latest FROM sales WHERE sold_at >= :dateFrom";
+        String purchaseSql = safeDays == null
+                ? "SELECT MAX(received_at) AS latest FROM purchase_orders WHERE status = 'RECEIVED'"
+                : "SELECT MAX(received_at) AS latest FROM purchase_orders WHERE status = 'RECEIVED' AND received_at >= :dateFrom";
+        String pricesSql = safeDays == null
+                ? "SELECT MAX(changed_at) AS latest FROM price_history"
+                : "SELECT MAX(changed_at) AS latest FROM price_history WHERE changed_at >= :dateFrom";
+
+        LocalDateTime latestSales = asLocalDateTime(jdbcTemplate.queryForMap(salesSql, params).get("latest"));
+        LocalDateTime latestPurchases = asLocalDateTime(jdbcTemplate.queryForMap(purchaseSql, params).get("latest"));
+        LocalDateTime latestPriceChange = asLocalDateTime(jdbcTemplate.queryForMap(pricesSql, params).get("latest"));
+
+        LocalDateTime generatedAt = Stream.of(latestSales, latestPurchases, latestPriceChange)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(LocalDateTime.now());
+
+        boolean seedApplied = isAnalyticsSeedApplied();
+        String source = analyticsSeedEnabled
+                ? (seedApplied ? "API_REAL_LOCAL_SEEDED" : "API_REAL_SEED_PENDING")
+                : "API_REAL";
+
+        return new AnaliticaMetaResponse(source, analyticsSeedEnabled, generatedAt, resolvedWindowDays);
+    }
+
     private java.math.BigDecimal asBigDecimal(Object value) {
         if (value == null) return java.math.BigDecimal.ZERO;
         if (value instanceof java.math.BigDecimal decimal) return decimal;
@@ -478,6 +524,42 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         if (value == null) return 0L;
         if (value instanceof Number number) return number.longValue();
         return 0L;
+    }
+
+    private LocalDateTime asLocalDateTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDateTime localDateTime) return localDateTime;
+        if (value instanceof Timestamp timestamp) return timestamp.toLocalDateTime();
+        if (value instanceof java.sql.Date date) return date.toLocalDate().atStartOfDay();
+        return null;
+    }
+
+    private boolean isAnalyticsSeedApplied() {
+        try {
+            Integer tableExists = jdbcTemplate.queryForObject("""
+                            SELECT COUNT(*)
+                            FROM information_schema.tables
+                            WHERE table_schema = DATABASE()
+                              AND table_name = 'analytics_seed_meta'
+                            """,
+                    new MapSqlParameterSource(),
+                    Integer.class
+            );
+
+            if (tableExists == null || tableExists == 0) {
+                return false;
+            }
+
+            Integer seedKeyCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM analytics_seed_meta WHERE seed_key = :seedKey",
+                    new MapSqlParameterSource("seedKey", ANALYTICS_SEED_KEY),
+                    Integer.class
+            );
+
+            return seedKeyCount != null && seedKeyCount > 0;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private int resolvePeriodDays(Integer safeDays, MapSqlParameterSource params) {
