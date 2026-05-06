@@ -66,10 +66,6 @@ rate-limit:
       refill-tokens: ${RATE_LIMIT_AUTH_REGISTER_REFILL_TOKENS:5}
       refill-seconds: ${RATE_LIMIT_AUTH_REGISTER_REFILL_SECONDS:60}
 
-analytics:
-  seed:
-    enabled: ${ANALYTICS_SEED_ENABLED:false}
-
 logging:
   level:
     com.nuv.tfgrs.controller.AuthController: DEBUG
