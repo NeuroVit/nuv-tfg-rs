@@ -60,6 +60,7 @@ public class UsuarioAdminServiceImpl implements UsuarioAdminService {
                 .passwordHash(passwordEncoder.encode(temporaryPassword))
                 .role(role)
                 .active(true)
+                .mustChangePassword(true)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
