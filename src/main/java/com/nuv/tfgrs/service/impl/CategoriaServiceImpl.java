@@ -6,6 +6,7 @@ import com.nuv.tfgrs.dto.response.CategoriaResponse;
 import com.nuv.tfgrs.entity.Categoria;
 import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.repository.CategoriaRepository;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.CategoriaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -21,11 +22,13 @@ import java.util.List;
 public class CategoriaServiceImpl implements CategoriaService {
 
     private final CategoriaRepository categoriaRepository;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<CategoriaResponse> listarTodas() {
-        return categoriaRepository.findAll()
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        return categoriaRepository.findAllByOrganizationIdOrderByNameAsc(organizationId)
                 .stream()
                 .map(CategoriaResponse::from)
                 .toList();
@@ -34,16 +37,19 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Override
     @Transactional(readOnly = true)
     public CategoriaResponse buscarPorId(Long id) {
-        return CategoriaResponse.from(buscarEntidadPorId(id));
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        return CategoriaResponse.from(buscarEntidadPorId(id, organizationId));
     }
 
     @Override
     @Transactional
     public CategoriaResponse crear(CrearCategoriaRequest request) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         String nombreNormalizado = normalizarNombre(request.nombre());
-        validarNombreDisponibleParaCrear(nombreNormalizado);
+        validarNombreDisponibleParaCrear(nombreNormalizado, organizationId);
 
         Categoria categoria = Categoria.builder()
+                .organizationId(organizationId)
                 .name(nombreNormalizado)
                 .description(normalizarDescripcion(request.descripcion()))
                 .build();
@@ -54,11 +60,12 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Override
     @Transactional
     public CategoriaResponse actualizar(Long id, EditarCategoriaRequest request) {
-        Categoria categoria = buscarEntidadPorId(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Categoria categoria = buscarEntidadPorId(id, organizationId);
 
         if (request.nombre() != null) {
             String nombreNormalizado = normalizarNombre(request.nombre());
-            validarNombreDisponibleParaActualizar(nombreNormalizado, id);
+            validarNombreDisponibleParaActualizar(nombreNormalizado, organizationId, id);
             categoria.setName(nombreNormalizado);
         }
 
@@ -72,7 +79,8 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Override
     @Transactional
     public void eliminar(Long id) {
-        Categoria categoria = buscarEntidadPorId(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Categoria categoria = buscarEntidadPorId(id, organizationId);
         try {
             categoriaRepository.delete(categoria);
         } catch (DataIntegrityViolationException ex) {
@@ -83,19 +91,19 @@ public class CategoriaServiceImpl implements CategoriaService {
         }
     }
 
-    private Categoria buscarEntidadPorId(Long id) {
-        return categoriaRepository.findById(id)
+    private Categoria buscarEntidadPorId(Long id, Long organizationId) {
+        return categoriaRepository.findByIdAndOrganizationId(id, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Categoría no encontrada: " + id));
     }
 
-    private void validarNombreDisponibleParaCrear(String nombre) {
-        if (categoriaRepository.existsByNameIgnoreCase(nombre)) {
+    private void validarNombreDisponibleParaCrear(String nombre, Long organizationId) {
+        if (categoriaRepository.existsByNameIgnoreCaseAndOrganizationId(nombre, organizationId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El nombre de la categoría ya está en uso");
         }
     }
 
-    private void validarNombreDisponibleParaActualizar(String nombre, Long idCategoria) {
-        if (categoriaRepository.existsByNameIgnoreCaseAndIdNot(nombre, idCategoria)) {
+    private void validarNombreDisponibleParaActualizar(String nombre, Long organizationId, Long idCategoria) {
+        if (categoriaRepository.existsByNameIgnoreCaseAndOrganizationIdAndIdNot(nombre, organizationId, idCategoria)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El nombre de la categoría ya está en uso");
         }
     }

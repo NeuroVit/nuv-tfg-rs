@@ -2,6 +2,7 @@ package com.nuv.tfgrs.service.impl;
 
 import com.nuv.tfgrs.dto.response.MovimientoStockPageResponse;
 import com.nuv.tfgrs.dto.response.MovimientoStockResponse;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.MovimientoStockQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -19,6 +20,7 @@ import java.util.List;
 public class MovimientoStockQueryServiceImpl implements MovimientoStockQueryService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
@@ -31,6 +33,7 @@ public class MovimientoStockQueryServiceImpl implements MovimientoStockQueryServ
             Integer limit,
             Integer offset
     ) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         int safeLimit = Math.max(1, Math.min(limit == null ? 20 : limit, 100));
         int safeOffset = Math.max(0, offset == null ? 0 : offset);
 
@@ -38,7 +41,8 @@ public class MovimientoStockQueryServiceImpl implements MovimientoStockQueryServ
         String normalizedRazon = razon == null ? null : razon.trim().toUpperCase();
 
         List<String> filters = new ArrayList<>();
-        MapSqlParameterSource params = new MapSqlParameterSource();
+        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+        filters.add("sm.organization_id = :organizationId");
 
         if (productId != null) {
             filters.add("sm.product_id = :productId");

@@ -9,9 +9,10 @@ import java.util.Optional;
 
 @Repository
 public interface ClienteRepository extends JpaRepository<Cliente, Long> {
-    List<Cliente> findAllByOrderByNameAsc();
-    List<Cliente> findByActiveTrueOrderByNameAsc();
-    Optional<Cliente> findByEmail(String email);
-    boolean existsByEmailAndIdNot(String email, Long id);
-    boolean existsByIdAndActiveTrue(Long id);
+    List<Cliente> findByOrganizationIdOrderByNameAsc(Long organizationId);
+    List<Cliente> findByOrganizationIdAndActiveTrueOrderByNameAsc(Long organizationId);
+    Optional<Cliente> findByOrganizationIdAndEmail(Long organizationId, String email);
+    boolean existsByOrganizationIdAndEmailAndIdNot(Long organizationId, String email, Long id);
+    boolean existsByIdAndOrganizationIdAndActiveTrue(Long id, Long organizationId);
+    Optional<Cliente> findByIdAndOrganizationId(Long id, Long organizationId);
 }

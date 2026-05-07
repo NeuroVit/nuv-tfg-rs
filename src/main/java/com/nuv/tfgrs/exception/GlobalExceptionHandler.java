@@ -1,5 +1,6 @@
 package com.nuv.tfgrs.exception;
  
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
  
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     // Validation errors — returns { errors: [{ field, message }] }
@@ -38,6 +40,7 @@ public class GlobalExceptionHandler {
     // Catch-all for unexpected errors
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleGeneric(Exception ex) {
+        log.error("Unhandled exception in request processing", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
             Map.of("error", "An unexpected error occurred", "timestamp", LocalDateTime.now())
         );

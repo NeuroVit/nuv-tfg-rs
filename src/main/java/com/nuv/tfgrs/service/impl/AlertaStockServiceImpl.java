@@ -4,6 +4,7 @@ import com.nuv.tfgrs.dto.response.AlertaStockResponse;
 import com.nuv.tfgrs.entity.AlertaStock;
 import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.repository.AlertaStockRepository;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.AlertaStockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,17 +18,19 @@ import java.util.List;
 public class AlertaStockServiceImpl implements AlertaStockService {
 
     private final AlertaStockRepository alertaStockRepository;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<AlertaStockResponse> listar(Boolean resueltas) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         List<AlertaStock> alerts;
         if (resueltas == null) {
-            alerts = alertaStockRepository.findAll();
+            alerts = alertaStockRepository.findByOrganizationId(organizationId);
         } else if (resueltas) {
-            alerts = alertaStockRepository.findByResolvedTrueOrderByCreatedAtDesc();
+            alerts = alertaStockRepository.findByOrganizationIdAndResolvedTrueOrderByCreatedAtDesc(organizationId);
         } else {
-            alerts = alertaStockRepository.findByResolvedFalseOrderByCreatedAtDesc();
+            alerts = alertaStockRepository.findByOrganizationIdAndResolvedFalseOrderByCreatedAtDesc(organizationId);
         }
 
         return alerts.stream()
@@ -38,7 +41,8 @@ public class AlertaStockServiceImpl implements AlertaStockService {
     @Override
     @Transactional
     public AlertaStockResponse resolver(Long alertId) {
-        AlertaStock alert = alertaStockRepository.findById(alertId)
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        AlertaStock alert = alertaStockRepository.findByIdAndOrganizationId(alertId, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Alerta no encontrada: " + alertId));
 
         alert.setResolved(true);
