@@ -78,6 +78,7 @@ public class AuthServiceImpl implements AuthService {
                 .apellidos(request.apellidos())
                 .role(Usuario.Role.ROLE_VIEWER)
                 .active(true)
+                .mustChangePassword(false)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -159,6 +160,7 @@ public class AuthServiceImpl implements AuthService {
                         nuevo.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
                         nuevo.setRole(Role.ROLE_VIEWER);
                         nuevo.setActive(true);
+                        nuevo.setMustChangePassword(false);
                         nuevo.setCreatedAt(LocalDateTime.now());
                         nuevo.setUpdatedAt(LocalDateTime.now());
                         return nuevo;
@@ -286,6 +288,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         usuario.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        usuario.setMustChangePassword(false);
         usuario.setUpdatedAt(LocalDateTime.now());
         usuarioRepository.save(usuario);
     }
@@ -311,7 +314,8 @@ public class AuthServiceImpl implements AuthService {
                 accessToken,
                 usuario.getUsername(),
                 usuario.getRole().name(),
-                jwtService.getAccessExpirationMs()
+                jwtService.getAccessExpirationMs(),
+                Boolean.TRUE.equals(usuario.getMustChangePassword())
         );
         return new AuthTokens(authResponse, refreshToken);
     }
