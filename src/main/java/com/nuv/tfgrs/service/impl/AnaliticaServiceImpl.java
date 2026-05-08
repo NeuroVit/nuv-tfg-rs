@@ -262,15 +262,15 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     public List<StockDistributionRowResponse> distribucionStock() {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         String sql = """
-                SELECT stock_status,
+                SELECT v.stock_status,
                        COUNT(*) AS products,
-                       COALESCE(SUM(current_quantity), 0) AS quantity_total,
-                       COALESCE(SUM(stock_value), 0) AS stock_value_total
+                       COALESCE(SUM(v.current_quantity), 0) AS quantity_total,
+                       COALESCE(SUM(v.stock_value), 0) AS stock_value_total
                 FROM v_inventory_summary v
                 JOIN products p ON p.id = v.product_id
                 WHERE p.organization_id = :organizationId
-                GROUP BY stock_status
-                ORDER BY FIELD(stock_status, 'OUT_OF_STOCK', 'LOW_STOCK', 'OK', 'OVERSTOCK')
+                GROUP BY v.stock_status
+                ORDER BY FIELD(v.stock_status, 'OUT_OF_STOCK', 'LOW_STOCK', 'OK', 'OVERSTOCK')
                 """;
 
         return jdbcTemplate.query(sql, new MapSqlParameterSource("organizationId", organizationId), (rs, rowNum) -> new StockDistributionRowResponse(
