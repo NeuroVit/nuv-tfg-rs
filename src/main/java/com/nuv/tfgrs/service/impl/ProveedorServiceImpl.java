@@ -11,6 +11,7 @@ import com.nuv.tfgrs.entity.Proveedor;
 import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.repository.ProveedorRepository;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.ProveedorService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -30,18 +31,20 @@ public class ProveedorServiceImpl implements ProveedorService {
     private final ProveedorRepository proveedorRepository;
     private final ProductoRepository productoRepository;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<ProveedorResponse> listar(boolean includeArchived) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         List<Proveedor> proveedores = includeArchived
-                ? proveedorRepository.findAllByOrderByNameAsc()
-                : proveedorRepository.findByActiveTrueOrderByNameAsc();
+                ? proveedorRepository.findByOrganizationIdOrderByNameAsc(organizationId)
+                : proveedorRepository.findByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId);
 
         return proveedores.stream()
                 .map(proveedor -> ProveedorResponse.from(
                         proveedor,
-                        productoRepository.countByProviderId(proveedor.getId())
+                        productoRepository.countByProviderIdAndOrganizationId(proveedor.getId(), organizationId)
                 ))
                 .toList();
     }
@@ -49,12 +52,14 @@ public class ProveedorServiceImpl implements ProveedorService {
     @Override
     @Transactional
     public ProveedorResponse crear(CrearProveedorRequest request) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         String nombre = normalizeRequired(request.nombre(), "El nombre del proveedor es obligatorio");
-        if (proveedorRepository.existsByNameIgnoreCase(nombre)) {
+        if (proveedorRepository.existsByNameIgnoreCaseAndOrganizationId(nombre, organizationId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un proveedor con ese nombre");
         }
 
         Proveedor proveedor = Proveedor.builder()
+                .organizationId(organizationId)
                 .name(nombre)
                 .warehouseLocation(normalizeRequired(request.ubicacionAlmacen(), "La ubicación del almacén es obligatoria"))
                 .leadTimeDays(request.diasEntrega())
@@ -68,9 +73,10 @@ public class ProveedorServiceImpl implements ProveedorService {
     @Override
     @Transactional
     public ProveedorResponse actualizar(Long id, EditarProveedorRequest request) {
-        Proveedor proveedor = findByIdOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Proveedor proveedor = findByIdOrThrow(id, organizationId);
         String nombre = normalizeRequired(request.nombre(), "El nombre del proveedor es obligatorio");
-        if (proveedorRepository.existsByNameIgnoreCaseAndIdNot(nombre, id)) {
+        if (proveedorRepository.existsByNameIgnoreCaseAndOrganizationIdAndIdNot(nombre, organizationId, id)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un proveedor con ese nombre");
         }
 
@@ -82,40 +88,43 @@ public class ProveedorServiceImpl implements ProveedorService {
         proveedor.setLeadTimeDays(request.diasEntrega());
 
         Proveedor saved = proveedorRepository.save(proveedor);
-        return ProveedorResponse.from(saved, productoRepository.countByProviderId(saved.getId()));
+        return ProveedorResponse.from(saved, productoRepository.countByProviderIdAndOrganizationId(saved.getId(), organizationId));
     }
 
     @Override
     @Transactional
     public ProveedorResponse archivar(Long id) {
-        Proveedor proveedor = findByIdOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Proveedor proveedor = findByIdOrThrow(id, organizationId);
         proveedor.setActive(false);
         proveedor.setDeletedAt(LocalDateTime.now());
         Proveedor saved = proveedorRepository.save(proveedor);
-        return ProveedorResponse.from(saved, productoRepository.countByProviderId(saved.getId()));
+        return ProveedorResponse.from(saved, productoRepository.countByProviderIdAndOrganizationId(saved.getId(), organizationId));
     }
 
     @Override
     @Transactional
     public ProveedorResponse restaurar(Long id) {
-        Proveedor proveedor = findByIdOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Proveedor proveedor = findByIdOrThrow(id, organizationId);
         proveedor.setActive(true);
         proveedor.setDeletedAt(null);
         Proveedor saved = proveedorRepository.save(proveedor);
-        return ProveedorResponse.from(saved, productoRepository.countByProviderId(saved.getId()));
+        return ProveedorResponse.from(saved, productoRepository.countByProviderIdAndOrganizationId(saved.getId(), organizationId));
     }
 
     @Override
     @Transactional(readOnly = true)
     public ProveedorDetalleResponse detalle(Long id) {
-        Proveedor proveedor = findByIdOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Proveedor proveedor = findByIdOrThrow(id, organizationId);
         ProveedorResponse providerResponse = ProveedorResponse.from(
                 proveedor,
-                productoRepository.countByProviderId(proveedor.getId())
+                productoRepository.countByProviderIdAndOrganizationId(proveedor.getId(), organizationId)
         );
 
         List<ProveedorProductoResumenResponse> productos = productoRepository
-                .findByProviderIdOrderByNameAsc(proveedor.getId())
+                .findByProviderIdAndOrganizationIdOrderByNameAsc(proveedor.getId(), organizationId)
                 .stream()
                 .map(producto -> new ProveedorProductoResumenResponse(
                         producto.getId(),
@@ -127,14 +136,14 @@ public class ProveedorServiceImpl implements ProveedorService {
                 ))
                 .toList();
 
-        List<PedidoProveedorResumenResponse> pedidosRecientes = listarPedidosRecientes(proveedor.getId());
-        ProveedorKpiResponse kpis = calcularKpis(proveedor.getId());
+        List<PedidoProveedorResumenResponse> pedidosRecientes = listarPedidosRecientes(proveedor.getId(), organizationId);
+        ProveedorKpiResponse kpis = calcularKpis(proveedor.getId(), organizationId);
 
         return new ProveedorDetalleResponse(providerResponse, kpis, productos, pedidosRecientes);
     }
 
-    private Proveedor findByIdOrThrow(Long id) {
-        return proveedorRepository.findById(id)
+    private Proveedor findByIdOrThrow(Long id, Long organizationId) {
+        return proveedorRepository.findByIdAndOrganizationId(id, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proveedor no encontrado: " + id));
     }
 
@@ -145,7 +154,7 @@ public class ProveedorServiceImpl implements ProveedorService {
         return value.trim();
     }
 
-    private List<PedidoProveedorResumenResponse> listarPedidosRecientes(Long providerId) {
+    private List<PedidoProveedorResumenResponse> listarPedidosRecientes(Long providerId, Long organizationId) {
         String sql = """
                 SELECT
                     po.id,
@@ -161,12 +170,14 @@ public class ProveedorServiceImpl implements ProveedorService {
                 FROM purchase_orders po
                 LEFT JOIN purchase_order_items poi ON poi.order_id = po.id
                 WHERE po.provider_id = :providerId
+                  AND po.organization_id = :organizationId
                 GROUP BY po.id, po.status, po.desired_arrival_date, po.recommended_order_date, po.sent_at, po.received_at, po.created_at
                 ORDER BY po.created_at DESC
                 LIMIT 20
                 """;
 
-        MapSqlParameterSource params = new MapSqlParameterSource("providerId", providerId);
+        MapSqlParameterSource params = new MapSqlParameterSource("providerId", providerId)
+                .addValue("organizationId", organizationId);
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> new PedidoProveedorResumenResponse(
                 rs.getLong("id"),
                 rs.getString("status"),
@@ -181,7 +192,7 @@ public class ProveedorServiceImpl implements ProveedorService {
         ));
     }
 
-    private ProveedorKpiResponse calcularKpis(Long providerId) {
+    private ProveedorKpiResponse calcularKpis(Long providerId, Long organizationId) {
         String sql = """
                 SELECT
                     COUNT(*) AS total_pedidos,
@@ -191,9 +202,11 @@ public class ProveedorServiceImpl implements ProveedorService {
                     SUM(CASE WHEN status = 'RECEIVED' AND received_at <= TIMESTAMP(desired_arrival_date, '23:59:59') THEN 1 ELSE 0 END) AS recibidos_en_fecha
                 FROM purchase_orders
                 WHERE provider_id = :providerId
+                  AND organization_id = :organizationId
                 """;
 
-        MapSqlParameterSource params = new MapSqlParameterSource("providerId", providerId);
+        MapSqlParameterSource params = new MapSqlParameterSource("providerId", providerId)
+                .addValue("organizationId", organizationId);
         return jdbcTemplate.queryForObject(sql, params, (rs, rowNum) -> {
             long total = rs.getLong("total_pedidos");
             long activos = rs.getLong("pedidos_activos");

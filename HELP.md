@@ -31,13 +31,13 @@ The following guides illustrate how to use some features concretely:
 * [Building a RESTful Web Service with Spring Boot Actuator](https://spring.io/guides/gs/actuator-service/)
 
 ### Docker Compose support
-This project contains a Docker Compose file named `compose.yaml`.
-In this file, the following services have been defined:
+This backend no longer owns a `compose.yaml`.
+Local Docker services are managed in `../nuv-tfg-infra/docker-compose.yml`:
 
-* mysql: [`mysql:latest`](https://hub.docker.com/_/mysql)
-* ollama: [`ollama/ollama:latest`](https://hub.docker.com/r/ollama/ollama)
+* Default: MySQL
+* Optional profile `ai`: Ollama
 
-Please review the tags of the used images and set them to the same as you're running in production.
+Keep backend `SPRING_DOCKER_COMPOSE_ENABLED=false` and start infra explicitly.
 
 ### Maven Parent overrides
 
@@ -45,4 +45,3 @@ Due to Maven's design, elements are inherited from the parent POM to the project
 While most of the inheritance is fine, it also inherits unwanted elements like `<license>` and `<developers>` from the parent.
 To prevent this, the project POM contains empty overrides for these elements.
 If you manually switch to a different parent and actually want the inheritance, you need to remove those overrides.
-

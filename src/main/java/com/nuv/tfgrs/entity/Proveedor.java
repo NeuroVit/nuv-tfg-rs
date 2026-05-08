@@ -21,7 +21,10 @@ public class Proveedor {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 200)
+    @Column(name = "organization_id", nullable = false)
+    private Long organizationId;
+
+    @Column(nullable = false, length = 200)
     private String name;
 
     @Column(name = "warehouse_location", nullable = false, length = 500)

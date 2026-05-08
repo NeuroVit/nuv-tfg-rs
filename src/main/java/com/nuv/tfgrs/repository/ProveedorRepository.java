@@ -9,9 +9,10 @@ import java.util.Optional;
 
 @Repository
 public interface ProveedorRepository extends JpaRepository<Proveedor, Long> {
-    List<Proveedor> findByActiveTrueOrderByNameAsc();
-    List<Proveedor> findAllByOrderByNameAsc();
-    Optional<Proveedor> findByNameIgnoreCase(String name);
-    boolean existsByNameIgnoreCase(String name);
-    boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+    List<Proveedor> findByOrganizationIdAndActiveTrueOrderByNameAsc(Long organizationId);
+    List<Proveedor> findByOrganizationIdOrderByNameAsc(Long organizationId);
+    Optional<Proveedor> findByIdAndOrganizationId(Long id, Long organizationId);
+    boolean existsByNameIgnoreCaseAndOrganizationId(String name, Long organizationId);
+    boolean existsByNameIgnoreCaseAndOrganizationIdAndIdNot(String name, Long organizationId, Long id);
+    boolean existsByIdAndOrganizationId(Long id, Long organizationId);
 }

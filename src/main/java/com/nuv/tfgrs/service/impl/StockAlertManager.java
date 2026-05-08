@@ -17,12 +17,16 @@ public class StockAlertManager {
 
     public void syncForProduct(Producto producto) {
         if (producto == null || producto.getId() == null) return;
+        if (producto.getOrganizationId() == null) return;
+
+        Long organizationId = producto.getOrganizationId();
 
         int current = producto.getCurrentQuantity() == null ? 0 : producto.getCurrentQuantity();
         int minimum = producto.getMinimumStockLevel() == null ? 0 : producto.getMinimumStockLevel();
 
         if (current <= 0) {
             createIfMissing(
+                    organizationId,
                     producto,
                     AlertaStock.AlertType.OUT_OF_STOCK,
                     "Sin stock: " + producto.getName() + " (" + producto.getSku() + ")"
@@ -32,6 +36,7 @@ public class StockAlertManager {
 
         if (current <= minimum) {
             createIfMissing(
+                    organizationId,
                     producto,
                     AlertaStock.AlertType.LOW_STOCK,
                     "Stock bajo: " + producto.getName() + " (" + producto.getSku() + ") - actual "
@@ -40,14 +45,19 @@ public class StockAlertManager {
             return;
         }
 
-        resolveOpenStockAlerts(producto.getId());
+        resolveOpenStockAlerts(organizationId, producto.getId());
     }
 
-    private void createIfMissing(Producto producto, AlertaStock.AlertType type, String message) {
-        if (alertaStockRepository.existsByProductIdAndAlertTypeAndResolvedFalse(producto.getId(), type)) {
+    private void createIfMissing(Long organizationId, Producto producto, AlertaStock.AlertType type, String message) {
+        if (alertaStockRepository.existsByOrganizationIdAndProductIdAndAlertTypeAndResolvedFalse(
+                organizationId,
+                producto.getId(),
+                type
+        )) {
             return;
         }
         AlertaStock alert = AlertaStock.builder()
+                .organizationId(organizationId)
                 .product(producto)
                 .alertType(type)
                 .message(message)
@@ -55,8 +65,9 @@ public class StockAlertManager {
         alertaStockRepository.save(alert);
     }
 
-    private void resolveOpenStockAlerts(Long productId) {
-        List<AlertaStock> openAlerts = alertaStockRepository.findByProductIdAndResolvedFalse(productId);
+    private void resolveOpenStockAlerts(Long organizationId, Long productId) {
+        List<AlertaStock> openAlerts =
+                alertaStockRepository.findByOrganizationIdAndProductIdAndResolvedFalse(organizationId, productId);
         if (openAlerts.isEmpty()) return;
 
         LocalDateTime now = LocalDateTime.now();

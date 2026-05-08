@@ -6,9 +6,11 @@ import com.nuv.tfgrs.dto.request.AuthRequest.GoogleAuthRequest;
 import com.nuv.tfgrs.dto.request.AuthRequest.SwitchRoleRequest;
 import com.nuv.tfgrs.dto.request.AuthRequest.UpdateMeRequest;
 import com.nuv.tfgrs.dto.response.AuthResponse;
+import com.nuv.tfgrs.dto.response.OrganizationSessionResponse;
 import com.nuv.tfgrs.dto.response.AuthTokens;
 import com.nuv.tfgrs.dto.response.UserProfileResponse;
 import com.nuv.tfgrs.service.AuthService;
+import com.nuv.tfgrs.service.OrganizationService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ public class AuthController {
     private static final String REFRESH_TOKEN_COOKIE_NAME = "refreshToken";
 
     private final AuthService authService;
+    private final OrganizationService organizationService;
 
     @Value("${jwt.refresh-cookie-secure:false}")
     private boolean refreshCookieSecure;
@@ -92,6 +95,12 @@ public class AuthController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserProfileResponse> perfilActual(Authentication authentication) {
         return ResponseEntity.ok(authService.perfilUsuarioActual(authentication.getName()));
+    }
+
+    @GetMapping("/session")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<OrganizationSessionResponse> currentSession() {
+        return ResponseEntity.ok(organizationService.currentSession());
     }
 
     @PutMapping("/me")

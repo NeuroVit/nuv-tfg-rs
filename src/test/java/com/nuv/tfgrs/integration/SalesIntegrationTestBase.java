@@ -15,6 +15,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -45,13 +46,14 @@ public abstract class SalesIntegrationTestBase {
 
     protected Long insertClient(boolean active) {
         String sql = """
-                INSERT INTO clients (name, email, phone, notes, is_active, created_at, updated_at)
-                VALUES (:name, :email, :phone, :notes, :active, NOW(), NOW())
+                INSERT INTO clients (organization_id, name, email, phone, notes, is_active, created_at, updated_at)
+                VALUES (:organizationId, :name, :email, :phone, :notes, :active, NOW(), NOW())
                 """;
 
         GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
         String suffix = String.valueOf(System.nanoTime());
         MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("organizationId", currentOrganizationIdForTestUser())
                 .addValue("name", (active ? "Test Active Client " : "Test Inactive Client ") + suffix)
                 .addValue("email", (active ? "active-" : "inactive-") + suffix + "@test.local")
                 .addValue("phone", "600000000")
@@ -64,6 +66,36 @@ public abstract class SalesIntegrationTestBase {
             throw new IllegalStateException("No se pudo insertar cliente de prueba");
         }
         return key.longValue();
+    }
+
+    private Long currentOrganizationIdForTestUser() {
+        String username = SecurityContextHolder.getContext().getAuthentication() != null
+                ? SecurityContextHolder.getContext().getAuthentication().getName()
+                : null;
+        if (username != null && !username.isBlank()) {
+            Long orgId = jdbcTemplate.queryForObject(
+                    """
+                    SELECT om.organization_id
+                    FROM organization_memberships om
+                    JOIN users u ON u.id = om.user_id
+                    WHERE u.username = :username
+                    LIMIT 1
+                    """,
+                    new MapSqlParameterSource("username", username),
+                    Long.class
+            );
+            if (orgId != null) {
+                return orgId;
+            }
+        }
+
+        Long fallback = jdbcTemplate.queryForObject(
+                "SELECT id FROM organizations ORDER BY id LIMIT 1",
+                new MapSqlParameterSource(),
+                Long.class
+        );
+        Assertions.assertNotNull(fallback, "No existe organización de prueba");
+        return fallback;
     }
 
     protected Map<String, Object> directItem(long productId, int quantity, BigDecimal descuentoPct) {
