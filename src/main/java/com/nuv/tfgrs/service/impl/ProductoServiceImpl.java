@@ -42,6 +42,7 @@ public class ProductoServiceImpl implements ProductoService {
     private final ProveedorRepository proveedorRepository;
     private final MovimientoStockRepository movimientoStockRepository;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final StockAlertManager stockAlertManager;
     private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
@@ -105,6 +106,7 @@ public class ProductoServiceImpl implements ProductoService {
                     .build();
             movimientoStockRepository.save(movimientoInicial);
         }
+        stockAlertManager.syncForProduct(saved);
 
         return ProductoResponse.from(saved);
     }
@@ -153,7 +155,9 @@ public class ProductoServiceImpl implements ProductoService {
         }
         producto.setUpdatedAt(LocalDateTime.now());
 
-        return ProductoResponse.from(productoRepository.save(producto));
+        Producto saved = productoRepository.save(producto);
+        stockAlertManager.syncForProduct(saved);
+        return ProductoResponse.from(saved);
     }
 
     @Override
@@ -183,6 +187,7 @@ public class ProductoServiceImpl implements ProductoService {
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movimiento);
+            stockAlertManager.syncForProduct(saved);
 
             log.info("Stock actualizado correctamente");
             log.debug("Stock actualizado — producto={}, delta={}, razon={}, nuevo={}", id, request.delta(), request.razon(), nuevaCantidad);

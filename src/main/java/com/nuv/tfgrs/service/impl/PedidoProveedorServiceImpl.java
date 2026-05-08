@@ -37,6 +37,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     private final ProveedorRepository proveedorRepository;
     private final ProductoRepository productoRepository;
     private final MovimientoStockRepository movimientoStockRepository;
+    private final StockAlertManager stockAlertManager;
     private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
@@ -160,6 +161,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movement);
+            stockAlertManager.syncForProduct(saved);
         }
 
         String sql = """

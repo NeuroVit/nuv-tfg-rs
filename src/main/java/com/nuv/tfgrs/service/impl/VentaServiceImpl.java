@@ -45,6 +45,7 @@ public class VentaServiceImpl implements VentaService {
     private final ProductoRepository productoRepository;
     private final MovimientoStockRepository movimientoStockRepository;
     private final UsuarioRepository usuarioRepository;
+    private final StockAlertManager stockAlertManager;
     private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
@@ -278,6 +279,7 @@ public class VentaServiceImpl implements VentaService {
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movement);
+            stockAlertManager.syncForProduct(saved);
         }
     }
 
