@@ -19,6 +19,15 @@ cd ../nuv-tfg-infra
 docker compose up -d
 ```
 
+Optional (only if working on AI/Ollama features):
+
+```bash
+cd ../nuv-tfg-infra
+docker compose --profile ai up -d
+```
+
+Backend startup should not auto-run Docker Compose. Keep `SPRING_DOCKER_COMPOSE_ENABLED=false`.
+
 2. Ensure backend DB credentials are available (`.env`, exported env vars, or defaults).
 
 Default test fallbacks:

@@ -11,6 +11,7 @@ import com.nuv.tfgrs.repository.ClienteRepository;
 import com.nuv.tfgrs.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.repository.UsuarioRepository;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.VentaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -44,17 +45,19 @@ public class VentaServiceImpl implements VentaService {
     private final ProductoRepository productoRepository;
     private final MovimientoStockRepository movimientoStockRepository;
     private final UsuarioRepository usuarioRepository;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<VentaResponse> listar(Long clientId, int limit) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         int safeLimit = Math.max(1, Math.min(limit, 200));
-        List<VentaHeaderRow> headers = fetchSalesHeaders(clientId, safeLimit);
+        List<VentaHeaderRow> headers = fetchSalesHeaders(clientId, safeLimit, organizationId);
         if (headers.isEmpty()) {
             return List.of();
         }
 
-        Map<Long, List<VentaItemResponse>> itemsBySaleId = fetchSaleItems(headers.stream().map(VentaHeaderRow::id).toList());
+        Map<Long, List<VentaItemResponse>> itemsBySaleId = fetchSaleItems(headers.stream().map(VentaHeaderRow::id).toList(), organizationId);
 
         return headers.stream().map(header -> new VentaResponse(
                 header.id,
@@ -74,7 +77,8 @@ public class VentaServiceImpl implements VentaService {
     @Override
     @Transactional
     public VentaResponse crear(CrearVentaRequest request, String actorUsername) {
-        if (!clienteRepository.existsByIdAndActiveTrue(request.clientId())) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        if (!clienteRepository.existsByIdAndOrganizationIdAndActiveTrue(request.clientId(), organizationId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cliente no encontrado o inactivo");
         }
 
@@ -88,13 +92,13 @@ public class VentaServiceImpl implements VentaService {
         validateNoRepeatedProductsInDirectItems(directItems);
         validateNoRepeatedBundles(bundleItems);
 
-        Map<Long, BundleDefinition> bundlesById = loadBundleDefinitions(bundleItems);
+        Map<Long, BundleDefinition> bundlesById = loadBundleDefinitions(bundleItems, organizationId);
 
         Set<Long> allProductIds = new HashSet<>();
         directItems.forEach(item -> allProductIds.add(item.productId()));
         bundlesById.values().forEach(bundle -> bundle.components().forEach(component -> allProductIds.add(component.productId())));
 
-        Map<Long, Producto> productsById = productoRepository.findAllById(allProductIds)
+        Map<Long, Producto> productsById = productoRepository.findAllByIdInAndOrganizationId(allProductIds, organizationId)
                 .stream()
                 .collect(Collectors.toMap(Producto::getId, p -> p));
 
@@ -150,6 +154,7 @@ public class VentaServiceImpl implements VentaService {
 
         Long createdBy = usuarioRepository.findByUsername(actorUsername).map(Usuario::getId).orElse(null);
         Long saleId = insertSale(
+                organizationId,
                 request.clientId(),
                 request.notas(),
                 subtotalAmount,
@@ -159,10 +164,10 @@ public class VentaServiceImpl implements VentaService {
                 createdBy
         );
 
-        insertSaleItems(saleId, saleItemsToInsert);
-        updateStockAndCreateMovements(saleId, saleByProduct, productsById);
+        insertSaleItems(saleId, saleItemsToInsert, organizationId);
+        updateStockAndCreateMovements(saleId, saleByProduct, productsById, organizationId);
 
-        return fetchSaleById(saleId);
+        return fetchSaleById(saleId, organizationId);
     }
 
     private Map<Long, ProductSaleAccumulator> aggregateCandidates(
@@ -255,7 +260,8 @@ public class VentaServiceImpl implements VentaService {
     private void updateStockAndCreateMovements(
             Long saleId,
             Map<Long, ProductSaleAccumulator> saleByProduct,
-            Map<Long, Producto> productsById
+            Map<Long, Producto> productsById,
+            Long organizationId
     ) {
         for (ProductSaleAccumulator row : saleByProduct.values()) {
             Producto product = productsById.get(row.productId);
@@ -264,6 +270,7 @@ public class VentaServiceImpl implements VentaService {
             Producto saved = productoRepository.save(product);
 
             MovimientoStock movement = MovimientoStock.builder()
+                    .organizationId(organizationId)
                     .product(saved)
                     .delta(-row.quantity)
                     .reason(MovimientoStock.Reason.SALE)
@@ -275,6 +282,7 @@ public class VentaServiceImpl implements VentaService {
     }
 
     private Long insertSale(
+            Long organizationId,
             Long clientId,
             String notes,
             BigDecimal subtotalAmount,
@@ -285,6 +293,7 @@ public class VentaServiceImpl implements VentaService {
     ) {
         String sql = """
                 INSERT INTO sales (
+                    organization_id,
                     client_id,
                     sold_at,
                     notes,
@@ -296,6 +305,7 @@ public class VentaServiceImpl implements VentaService {
                     created_at
                 )
                 VALUES (
+                    :organizationId,
                     :clientId,
                     NOW(),
                     :notes,
@@ -310,6 +320,7 @@ public class VentaServiceImpl implements VentaService {
 
         GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(sql, new MapSqlParameterSource()
+                .addValue("organizationId", organizationId)
                 .addValue("clientId", clientId)
                 .addValue("notes", normalizeNotes(notes))
                 .addValue("subtotalAmount", subtotalAmount)
@@ -325,10 +336,11 @@ public class VentaServiceImpl implements VentaService {
         return key.longValue();
     }
 
-    private void insertSaleItems(Long saleId, List<SaleItemInsert> rows) {
+    private void insertSaleItems(Long saleId, List<SaleItemInsert> rows, Long organizationId) {
         String sql = """
                 INSERT INTO sale_items (
                     sale_id,
+                    organization_id,
                     product_id,
                     quantity,
                     list_unit_price_snapshot,
@@ -338,6 +350,7 @@ public class VentaServiceImpl implements VentaService {
                 )
                 VALUES (
                     :saleId,
+                    :organizationId,
                     :productId,
                     :quantity,
                     :listUnitPrice,
@@ -350,6 +363,7 @@ public class VentaServiceImpl implements VentaService {
         MapSqlParameterSource[] batch = rows.stream()
                 .map(row -> new MapSqlParameterSource()
                         .addValue("saleId", saleId)
+                        .addValue("organizationId", organizationId)
                         .addValue("productId", row.productId())
                         .addValue("quantity", row.quantity())
                         .addValue("listUnitPrice", row.listUnitPrice())
@@ -362,7 +376,7 @@ public class VentaServiceImpl implements VentaService {
         jdbcTemplate.batchUpdate(sql, batch);
     }
 
-    private Map<Long, BundleDefinition> loadBundleDefinitions(List<CrearVentaRequest.BundleItem> bundleItems) {
+    private Map<Long, BundleDefinition> loadBundleDefinitions(List<CrearVentaRequest.BundleItem> bundleItems, Long organizationId) {
         if (bundleItems.isEmpty()) {
             return Map.of();
         }
@@ -380,10 +394,12 @@ public class VentaServiceImpl implements VentaService {
                 FROM bundles b
                 LEFT JOIN bundle_items bi ON bi.bundle_id = b.id
                 WHERE b.id IN (:bundleIds)
+                  AND b.organization_id = :organizationId
                 ORDER BY b.id
                 """;
 
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, new MapSqlParameterSource("bundleIds", bundleIds));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, new MapSqlParameterSource("bundleIds", bundleIds)
+                .addValue("organizationId", organizationId));
 
         Map<Long, MutableBundleDefinition> mutable = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
@@ -483,7 +499,7 @@ public class VentaServiceImpl implements VentaService {
         return product.getUnitPrice();
     }
 
-    private List<VentaHeaderRow> fetchSalesHeaders(Long clientId, int limit) {
+    private List<VentaHeaderRow> fetchSalesHeaders(Long clientId, int limit, Long organizationId) {
         StringBuilder sql = new StringBuilder("""
                 SELECT
                     s.id,
@@ -500,9 +516,10 @@ public class VentaServiceImpl implements VentaService {
                 JOIN clients c ON c.id = s.client_id
                 """);
 
-        MapSqlParameterSource params = new MapSqlParameterSource();
+        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+        sql.append(" WHERE s.organization_id = :organizationId ");
         if (clientId != null) {
-            sql.append(" WHERE s.client_id = :clientId ");
+            sql.append(" AND s.client_id = :clientId ");
             params.addValue("clientId", clientId);
         }
 
@@ -523,7 +540,7 @@ public class VentaServiceImpl implements VentaService {
         ));
     }
 
-    private VentaResponse fetchSaleById(Long saleId) {
+    private VentaResponse fetchSaleById(Long saleId, Long organizationId) {
         String sql = """
                 SELECT
                     s.id,
@@ -539,9 +556,11 @@ public class VentaServiceImpl implements VentaService {
                 FROM sales s
                 JOIN clients c ON c.id = s.client_id
                 WHERE s.id = :saleId
+                  AND s.organization_id = :organizationId
                 """;
 
-        List<VentaHeaderRow> rows = jdbcTemplate.query(sql, new MapSqlParameterSource("saleId", saleId), (rs, rowNum) ->
+        List<VentaHeaderRow> rows = jdbcTemplate.query(sql, new MapSqlParameterSource("saleId", saleId)
+                        .addValue("organizationId", organizationId), (rs, rowNum) ->
                 new VentaHeaderRow(
                         rs.getLong("id"),
                         rs.getLong("client_id"),
@@ -561,7 +580,7 @@ public class VentaServiceImpl implements VentaService {
         }
 
         VentaHeaderRow row = rows.get(0);
-        Map<Long, List<VentaItemResponse>> itemsBySale = fetchSaleItems(List.of(saleId));
+        Map<Long, List<VentaItemResponse>> itemsBySale = fetchSaleItems(List.of(saleId), organizationId);
         return new VentaResponse(
                 row.id,
                 row.clientId,
@@ -577,7 +596,7 @@ public class VentaServiceImpl implements VentaService {
         );
     }
 
-    private Map<Long, List<VentaItemResponse>> fetchSaleItems(List<Long> saleIds) {
+    private Map<Long, List<VentaItemResponse>> fetchSaleItems(List<Long> saleIds, Long organizationId) {
         if (saleIds.isEmpty()) {
             return Map.of();
         }
@@ -595,10 +614,12 @@ public class VentaServiceImpl implements VentaService {
                 FROM sale_items si
                 JOIN products p ON p.id = si.product_id
                 WHERE si.sale_id IN (:saleIds)
+                  AND si.organization_id = :organizationId
                 ORDER BY p.name
                 """;
 
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, new MapSqlParameterSource("saleIds", saleIds));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, new MapSqlParameterSource("saleIds", saleIds)
+                .addValue("organizationId", organizationId));
         Map<Long, List<VentaItemResponse>> grouped = new HashMap<>();
 
         for (Map<String, Object> row : rows) {

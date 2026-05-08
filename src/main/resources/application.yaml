@@ -6,11 +6,12 @@ spring:
 
   docker:
     compose:
-      file: ../nuv-tfg-infra/docker-compose.yml
-      lifecycle-management: start-and-stop
+      enabled: ${SPRING_DOCKER_COMPOSE_ENABLED:false}
+      file: ${SPRING_DOCKER_COMPOSE_FILE:../nuv-tfg-infra/docker-compose.yml}
+      lifecycle-management: ${SPRING_DOCKER_COMPOSE_LIFECYCLE:start-and-stop}
 
   datasource:
-    url: jdbc:mysql://localhost:3306/stock_manager
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:stock_manager}}}
     username: ${DB_USER:${MYSQL_USER:nuv-tfg}}
     password: ${DB_PASSWORD:${MYSQL_PASSWORD:0000}}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -30,12 +31,15 @@ spring:
 
   ai:
     ollama:
-      base-url: http://localhost:11434
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         model: llama3.2
 
 server:
-  port: 8080
+  port: ${PORT:8080}
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  error:
+    include-stacktrace: never
 
 jwt:
   secret: ${JWT_SECRET}
@@ -72,7 +76,7 @@ analytics:
 
 logging:
   level:
-    com.nuv.tfgrs.controller.AuthController: DEBUG
-    com.nuv.tfgrs.service.impl.AuthServiceImpl: DEBUG
+    com.nuv.tfgrs.controller.AuthController: ${LOG_LEVEL_AUTH_CONTROLLER:INFO}
+    com.nuv.tfgrs.service.impl.AuthServiceImpl: ${LOG_LEVEL_AUTH_SERVICE:INFO}
     org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
     org.flywaydb.core.internal.database.base.Database: ERROR

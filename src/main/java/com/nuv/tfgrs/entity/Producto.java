@@ -23,13 +23,16 @@ public class Producto {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "organization_id", nullable = false)
+    private Long organizationId;
  
     @NotBlank
     @Column(nullable = false, length = 200)
     private String name;
  
     @NotBlank
-    @Column(nullable = false, unique = true, length = 100)
+    @Column(nullable = false, length = 100)
     private String sku;
  
     @Column(columnDefinition = "TEXT")
