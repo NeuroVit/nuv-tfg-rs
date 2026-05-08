@@ -10,7 +10,8 @@ public record UserProfileResponse(
         String apellidos,
         String role,
         boolean activo,
-        String avatarUrl
+        String avatarUrl,
+        boolean mustChangePassword
 ) {
     public static UserProfileResponse from(Usuario user) {
         return new UserProfileResponse(
@@ -21,7 +22,8 @@ public record UserProfileResponse(
                 user.getApellidos(),
                 user.getRole().name(),
                 Boolean.TRUE.equals(user.getActive()),
-                user.getAvatarUrl()
+                user.getAvatarUrl(),
+                Boolean.TRUE.equals(user.getMustChangePassword())
         );
     }
 }

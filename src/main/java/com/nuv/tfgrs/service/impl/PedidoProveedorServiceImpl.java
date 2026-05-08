@@ -10,6 +10,7 @@ import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.repository.ProveedorRepository;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.PedidoProveedorService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -36,23 +37,27 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     private final ProveedorRepository proveedorRepository;
     private final ProductoRepository productoRepository;
     private final MovimientoStockRepository movimientoStockRepository;
+    private final StockAlertManager stockAlertManager;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<PedidoProveedorResponse> listarPorProveedor(Long providerId) {
-        assertProviderExists(providerId);
-        return fetchOrdersByProvider(providerId);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        assertProviderExists(providerId, organizationId);
+        return fetchOrdersByProvider(providerId, organizationId);
     }
 
     @Override
     @Transactional
     public PedidoProveedorResponse crearBorrador(Long providerId, CrearPedidoProveedorRequest request) {
-        Proveedor provider = findProveedorActivoOrThrow(providerId);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Proveedor provider = findProveedorActivoOrThrow(providerId, organizationId);
         validateOrderItems(request.items());
 
         Map<Long, Producto> productsById = loadProductsMap(request.items().stream()
                 .map(CrearPedidoProveedorRequest.Item::productoId)
-                .toList());
+                .toList(), organizationId);
 
         for (CrearPedidoProveedorRequest.Item item : request.items()) {
             Producto product = productsById.get(item.productoId());
@@ -69,12 +74,13 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
 
         String insertOrderSql = """
                 INSERT INTO purchase_orders (
-                    provider_id, status, desired_arrival_date, recommended_order_date, notes, created_at, updated_at
+                    organization_id, provider_id, status, desired_arrival_date, recommended_order_date, notes, created_at, updated_at
                 )
-                VALUES (:providerId, 'DRAFT', :desiredArrivalDate, :recommendedOrderDate, :notes, NOW(), NOW())
+                VALUES (:organizationId, :providerId, 'DRAFT', :desiredArrivalDate, :recommendedOrderDate, :notes, NOW(), NOW())
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("organizationId", organizationId)
                 .addValue("providerId", providerId)
                 .addValue("desiredArrivalDate", Date.valueOf(desiredArrival))
                 .addValue("recommendedOrderDate", Date.valueOf(recommendedOrderDate))
@@ -88,36 +94,39 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         }
 
         Long orderId = key.longValue();
-        insertOrderItems(orderId, request.items(), productsById);
-        return fetchOrderById(orderId);
+        insertOrderItems(orderId, request.items(), productsById, organizationId);
+        return fetchOrderById(orderId, organizationId);
     }
 
     @Override
     @Transactional
     public PedidoProveedorResponse enviar(Long orderId) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         String sql = """
                 UPDATE purchase_orders
                 SET status = 'SENT', sent_at = NOW(), updated_at = NOW()
-                WHERE id = :orderId AND status = 'DRAFT'
+                WHERE id = :orderId AND organization_id = :organizationId AND status = 'DRAFT'
                 """;
-        int updated = jdbcTemplate.update(sql, new MapSqlParameterSource("orderId", orderId));
+        int updated = jdbcTemplate.update(sql, new MapSqlParameterSource("orderId", orderId)
+                .addValue("organizationId", organizationId));
         if (updated == 0) {
-            throwInvalidStatusTransition(orderId, "DRAFT", "No se puede enviar el pedido en su estado actual");
+            throwInvalidStatusTransition(orderId, organizationId, "DRAFT", "No se puede enviar el pedido en su estado actual");
         }
-        return fetchOrderById(orderId);
+        return fetchOrderById(orderId, organizationId);
     }
 
     @Override
     @Transactional
     public PedidoProveedorResponse recibir(Long orderId) {
-        String currentStatus = findOrderStatus(orderId);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        String currentStatus = findOrderStatus(orderId, organizationId);
         if (!"SENT".equals(currentStatus)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Solo se pueden recibir pedidos en estado SENT");
         }
 
-        PedidoProveedorResponse order = fetchOrderById(orderId);
+        PedidoProveedorResponse order = fetchOrderById(orderId, organizationId);
         for (PedidoProveedorItemResponse item : order.items()) {
-            Producto product = productoRepository.findById(item.productoId())
+            Producto product = productoRepository.findByIdAndOrganizationId(item.productoId(), organizationId)
                     .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado: " + item.productoId()));
             int currentQty = product.getCurrentQuantity();
             int incomingQty = item.cantidad();
@@ -144,6 +153,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
             Producto saved = productoRepository.save(product);
 
             MovimientoStock movement = MovimientoStock.builder()
+                    .organizationId(organizationId)
                     .product(saved)
                     .delta(item.cantidad())
                     .reason(MovimientoStock.Reason.PURCHASE)
@@ -151,21 +161,24 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movement);
+            stockAlertManager.syncForProduct(saved);
         }
 
         String sql = """
                 UPDATE purchase_orders
                 SET status = 'RECEIVED', received_at = NOW(), updated_at = NOW()
-                WHERE id = :orderId AND status = 'SENT'
+                WHERE id = :orderId AND organization_id = :organizationId AND status = 'SENT'
                 """;
-        jdbcTemplate.update(sql, new MapSqlParameterSource("orderId", orderId));
-        return fetchOrderById(orderId);
+        jdbcTemplate.update(sql, new MapSqlParameterSource("orderId", orderId)
+                .addValue("organizationId", organizationId));
+        return fetchOrderById(orderId, organizationId);
     }
 
     @Override
     @Transactional
     public PedidoProveedorResponse cancelar(Long orderId) {
-        String currentStatus = findOrderStatus(orderId);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        String currentStatus = findOrderStatus(orderId, organizationId);
         if ("RECEIVED".equals(currentStatus)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No se puede cancelar un pedido ya recibido");
         }
@@ -176,10 +189,11 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         String sql = """
                 UPDATE purchase_orders
                 SET status = 'CANCELLED', updated_at = NOW()
-                WHERE id = :orderId
+                WHERE id = :orderId AND organization_id = :organizationId
                 """;
-        jdbcTemplate.update(sql, new MapSqlParameterSource("orderId", orderId));
-        return fetchOrderById(orderId);
+        jdbcTemplate.update(sql, new MapSqlParameterSource("orderId", orderId)
+                .addValue("organizationId", organizationId));
+        return fetchOrderById(orderId, organizationId);
     }
 
     private void validateOrderItems(List<CrearPedidoProveedorRequest.Item> items) {
@@ -197,16 +211,18 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     private void insertOrderItems(
             Long orderId,
             List<CrearPedidoProveedorRequest.Item> items,
-            Map<Long, Producto> productsById
+            Map<Long, Producto> productsById,
+            Long organizationId
     ) {
         String sql = """
-                INSERT INTO purchase_order_items (order_id, product_id, quantity, unit_price_snapshot)
-                VALUES (:orderId, :productId, :quantity, :unitPriceSnapshot)
+                INSERT INTO purchase_order_items (order_id, organization_id, product_id, quantity, unit_price_snapshot)
+                VALUES (:orderId, :organizationId, :productId, :quantity, :unitPriceSnapshot)
                 """;
 
         MapSqlParameterSource[] batch = items.stream()
                 .map(item -> new MapSqlParameterSource()
                         .addValue("orderId", orderId)
+                        .addValue("organizationId", organizationId)
                         .addValue("productId", item.productoId())
                         .addValue("quantity", item.cantidad())
                         .addValue("unitPriceSnapshot", resolveOrderUnitCost(item, productsById)))
@@ -234,13 +250,13 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         return product.getUnitPrice();
     }
 
-    private Map<Long, Producto> loadProductsMap(List<Long> productIds) {
-        List<Producto> products = productoRepository.findAllById(productIds);
+    private Map<Long, Producto> loadProductsMap(List<Long> productIds, Long organizationId) {
+        List<Producto> products = productoRepository.findAllByIdInAndOrganizationId(productIds, organizationId);
         return products.stream().collect(Collectors.toMap(Producto::getId, p -> p));
     }
 
-    private Proveedor findProveedorActivoOrThrow(Long providerId) {
-        Proveedor provider = proveedorRepository.findById(providerId)
+    private Proveedor findProveedorActivoOrThrow(Long providerId, Long organizationId) {
+        Proveedor provider = proveedorRepository.findByIdAndOrganizationId(providerId, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proveedor no encontrado: " + providerId));
         if (!Boolean.TRUE.equals(provider.getActive())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El proveedor no está activo");
@@ -248,8 +264,8 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         return provider;
     }
 
-    private void assertProviderExists(Long providerId) {
-        if (!proveedorRepository.existsById(providerId)) {
+    private void assertProviderExists(Long providerId, Long organizationId) {
+        if (!proveedorRepository.existsByIdAndOrganizationId(providerId, organizationId)) {
             throw new ResourceNotFoundException("Proveedor no encontrado: " + providerId);
         }
     }
@@ -260,23 +276,24 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private void throwInvalidStatusTransition(Long orderId, String expectedStatus, String message) {
-        String currentStatus = findOrderStatus(orderId);
+    private void throwInvalidStatusTransition(Long orderId, Long organizationId, String expectedStatus, String message) {
+        String currentStatus = findOrderStatus(orderId, organizationId);
         if (!expectedStatus.equals(currentStatus)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, message);
         }
     }
 
-    private String findOrderStatus(Long orderId) {
-        String sql = "SELECT status FROM purchase_orders WHERE id = :orderId";
-        List<String> rows = jdbcTemplate.queryForList(sql, new MapSqlParameterSource("orderId", orderId), String.class);
+    private String findOrderStatus(Long orderId, Long organizationId) {
+        String sql = "SELECT status FROM purchase_orders WHERE id = :orderId AND organization_id = :organizationId";
+        List<String> rows = jdbcTemplate.queryForList(sql, new MapSqlParameterSource("orderId", orderId)
+                .addValue("organizationId", organizationId), String.class);
         if (rows.isEmpty()) {
             throw new ResourceNotFoundException("Pedido no encontrado: " + orderId);
         }
         return rows.get(0);
     }
 
-    private List<PedidoProveedorResponse> fetchOrdersByProvider(Long providerId) {
+    private List<PedidoProveedorResponse> fetchOrdersByProvider(Long providerId, Long organizationId) {
         String sql = """
                 SELECT
                     po.id,
@@ -292,10 +309,12 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                 FROM purchase_orders po
                 JOIN providers pr ON pr.id = po.provider_id
                 WHERE po.provider_id = :providerId
+                  AND po.organization_id = :organizationId
                 ORDER BY po.created_at DESC
                 """;
 
-        MapSqlParameterSource params = new MapSqlParameterSource("providerId", providerId);
+        MapSqlParameterSource params = new MapSqlParameterSource("providerId", providerId)
+                .addValue("organizationId", organizationId);
         List<PedidoHeaderRow> headers = jdbcTemplate.query(sql, params, (rs, rowNum) -> new PedidoHeaderRow(
                 rs.getLong("id"),
                 rs.getLong("provider_id"),
@@ -314,7 +333,8 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         }
 
         Map<Long, List<PedidoProveedorItemResponse>> itemsByOrderId = fetchItemsByOrderIds(
-                headers.stream().map(PedidoHeaderRow::id).toList()
+                headers.stream().map(PedidoHeaderRow::id).toList(),
+                organizationId
         );
 
         return headers.stream()
@@ -334,7 +354,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                 .toList();
     }
 
-    private PedidoProveedorResponse fetchOrderById(Long orderId) {
+    private PedidoProveedorResponse fetchOrderById(Long orderId, Long organizationId) {
         String sql = """
                 SELECT
                     po.id,
@@ -350,9 +370,11 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                 FROM purchase_orders po
                 JOIN providers pr ON pr.id = po.provider_id
                 WHERE po.id = :orderId
+                  AND po.organization_id = :organizationId
                 """;
 
-        List<PedidoHeaderRow> rows = jdbcTemplate.query(sql, new MapSqlParameterSource("orderId", orderId), (rs, rowNum) -> new PedidoHeaderRow(
+        List<PedidoHeaderRow> rows = jdbcTemplate.query(sql, new MapSqlParameterSource("orderId", orderId)
+                .addValue("organizationId", organizationId), (rs, rowNum) -> new PedidoHeaderRow(
                 rs.getLong("id"),
                 rs.getLong("provider_id"),
                 rs.getString("provider_name"),
@@ -369,7 +391,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
             throw new ResourceNotFoundException("Pedido no encontrado: " + orderId);
         }
         PedidoHeaderRow row = rows.get(0);
-        Map<Long, List<PedidoProveedorItemResponse>> itemsByOrderId = fetchItemsByOrderIds(List.of(orderId));
+        Map<Long, List<PedidoProveedorItemResponse>> itemsByOrderId = fetchItemsByOrderIds(List.of(orderId), organizationId);
         return new PedidoProveedorResponse(
                 row.id(),
                 row.providerId(),
@@ -385,7 +407,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         );
     }
 
-    private Map<Long, List<PedidoProveedorItemResponse>> fetchItemsByOrderIds(List<Long> orderIds) {
+    private Map<Long, List<PedidoProveedorItemResponse>> fetchItemsByOrderIds(List<Long> orderIds, Long organizationId) {
         String sql = """
                 SELECT
                     poi.order_id,
@@ -397,9 +419,11 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                 FROM purchase_order_items poi
                 JOIN products p ON p.id = poi.product_id
                 WHERE poi.order_id IN (:orderIds)
+                  AND poi.organization_id = :organizationId
                 ORDER BY p.name
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource("orderIds", orderIds);
+        MapSqlParameterSource params = new MapSqlParameterSource("orderIds", orderIds)
+                .addValue("organizationId", organizationId);
 
         return jdbcTemplate.query(sql, params, (rs) -> {
             Map<Long, List<PedidoProveedorItemResponse>> grouped = new HashMap<>();

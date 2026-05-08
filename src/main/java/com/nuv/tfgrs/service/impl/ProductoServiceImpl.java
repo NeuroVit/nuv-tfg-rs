@@ -13,6 +13,7 @@ import com.nuv.tfgrs.repository.CategoriaRepository;
 import com.nuv.tfgrs.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.repository.ProveedorRepository;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.ProductoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,25 +42,30 @@ public class ProductoServiceImpl implements ProductoService {
     private final ProveedorRepository proveedorRepository;
     private final MovimientoStockRepository movimientoStockRepository;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final StockAlertManager stockAlertManager;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<ProductoResponse> listarTodos() {
-        List<Producto> products = productoRepository.findAll();
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        List<Producto> products = productoRepository.findByOrganizationId(organizationId);
         return mapWithLatestOrderCost(products);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ProductoResponse> listarBajoStock() {
-        List<Producto> products = productoRepository.findLowStockProducts();
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        List<Producto> products = productoRepository.findLowStockProductsByOrganizationId(organizationId);
         return mapWithLatestOrderCost(products);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ProductoResponse buscarPorId(Long id) {
-        Producto product = findOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Producto product = findOrThrow(id, organizationId);
         BigDecimal cost = findLatestOrderCostByProductId(id);
         return ProductoResponse.from(product, cost);
     }
@@ -67,11 +73,13 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional
     public ProductoResponse crear(CrearProductoRequest request) {
-        validarSkuDisponibleParaCrear(request.sku());
-        Categoria categoria = findCategoriaOrThrowBadRequest(request.categoriaId());
-        Proveedor proveedor = findProveedorActivoOrThrowBadRequest(request.providerId());
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        validarSkuDisponibleParaCrear(request.sku(), organizationId);
+        Categoria categoria = findCategoriaOrThrowBadRequest(request.categoriaId(), organizationId);
+        Proveedor proveedor = findProveedorActivoOrThrowBadRequest(request.providerId(), organizationId);
 
         var producto = Producto.builder()
+                .organizationId(organizationId)
                 .name(request.nombre())
                 .sku(request.sku())
                 .description(request.descripcion())
@@ -89,6 +97,7 @@ public class ProductoServiceImpl implements ProductoService {
 
         if (saved.getCurrentQuantity() != null && saved.getCurrentQuantity() > 0) {
             MovimientoStock movimientoInicial = MovimientoStock.builder()
+                    .organizationId(organizationId)
                     .product(saved)
                     .delta(saved.getCurrentQuantity())
                     .reason(MovimientoStock.Reason.INITIAL)
@@ -97,6 +106,7 @@ public class ProductoServiceImpl implements ProductoService {
                     .build();
             movimientoStockRepository.save(movimientoInicial);
         }
+        stockAlertManager.syncForProduct(saved);
 
         return ProductoResponse.from(saved);
     }
@@ -104,7 +114,8 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional
     public ProductoResponse actualizar(Long id, EditarProductoRequest request) {
-        var producto = findOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        var producto = findOrThrow(id, organizationId);
 
         if (request.nombre() != null) {
             if (request.nombre().isBlank()) {
@@ -117,7 +128,7 @@ public class ProductoServiceImpl implements ProductoService {
             if (request.sku().isBlank()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El SKU no puede estar vacío");
             }
-            validarSkuDisponibleParaActualizar(id, request.sku());
+            validarSkuDisponibleParaActualizar(id, request.sku(), organizationId);
             producto.setSku(request.sku());
         }
 
@@ -137,20 +148,23 @@ public class ProductoServiceImpl implements ProductoService {
             producto.setAcquisitionPrice(request.costoUnitario());
         }
         if (request.categoriaId() != null) {
-            producto.setCategory(findCategoriaOrThrowBadRequest(request.categoriaId()));
+            producto.setCategory(findCategoriaOrThrowBadRequest(request.categoriaId(), organizationId));
         }
         if (request.providerId() != null) {
-            producto.setProvider(findProveedorActivoOrThrowBadRequest(request.providerId()));
+            producto.setProvider(findProveedorActivoOrThrowBadRequest(request.providerId(), organizationId));
         }
         producto.setUpdatedAt(LocalDateTime.now());
 
-        return ProductoResponse.from(productoRepository.save(producto));
+        Producto saved = productoRepository.save(producto);
+        stockAlertManager.syncForProduct(saved);
+        return ProductoResponse.from(saved);
     }
 
     @Override
     @Transactional
     public ProductoResponse actualizarStock(Long id, ActualizarStockRequest request) {
-        var producto = findOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        var producto = findOrThrow(id, organizationId);
         int nuevaCantidad = producto.getCurrentQuantity() + request.delta();
 
         if (nuevaCantidad < 0) {
@@ -165,6 +179,7 @@ public class ProductoServiceImpl implements ProductoService {
             Producto saved = productoRepository.save(producto);
 
             var movimiento = MovimientoStock.builder()
+                    .organizationId(organizationId)
                     .product(saved)
                     .delta(request.delta())
                     .reason(request.razon())
@@ -172,6 +187,7 @@ public class ProductoServiceImpl implements ProductoService {
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movimiento);
+            stockAlertManager.syncForProduct(saved);
 
             log.info("Stock actualizado correctamente");
             log.debug("Stock actualizado — producto={}, delta={}, razon={}, nuevo={}", id, request.delta(), request.razon(), nuevaCantidad);
@@ -189,7 +205,8 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional
     public void eliminar(Long id) {
-        Producto producto = findOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Producto producto = findOrThrow(id, organizationId);
         try {
             productoRepository.delete(producto);
             productoRepository.flush();
@@ -204,21 +221,24 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     @Transactional(readOnly = true)
     public List<String> listarBundlesVinculados(Long id) {
-        findOrThrow(id);
-        return findBundleNamesByProductId(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        findOrThrow(id, organizationId);
+        return findBundleNamesByProductId(id, organizationId);
     }
 
     @Override
     @Transactional
     public int desvincularDeBundles(Long id) {
-        findOrThrow(id);
-        List<String> bundles = findBundleNamesByProductId(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        findOrThrow(id, organizationId);
+        List<String> bundles = findBundleNamesByProductId(id, organizationId);
         if (bundles.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El producto no está asociado a ningún bundle");
         }
 
-        String sql = "DELETE FROM bundle_items WHERE product_id = :productId";
-        MapSqlParameterSource params = new MapSqlParameterSource("productId", id);
+        String sql = "DELETE FROM bundle_items WHERE product_id = :productId AND organization_id = :organizationId";
+        MapSqlParameterSource params = new MapSqlParameterSource("productId", id)
+                .addValue("organizationId", organizationId);
         int removed = jdbcTemplate.update(sql, params);
 
         log.info("Producto desvinculado de bundles");
@@ -226,18 +246,18 @@ public class ProductoServiceImpl implements ProductoService {
         return removed;
     }
 
-    private Producto findOrThrow(Long id) {
-        return productoRepository.findById(id)
+    private Producto findOrThrow(Long id, Long organizationId) {
+        return productoRepository.findByIdAndOrganizationId(id, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado: " + id));
     }
 
-    private Categoria findCategoriaOrThrowBadRequest(Long categoriaId) {
-        return categoriaRepository.findById(categoriaId)
+    private Categoria findCategoriaOrThrowBadRequest(Long categoriaId, Long organizationId) {
+        return categoriaRepository.findByIdAndOrganizationId(categoriaId, organizationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoría no encontrada"));
     }
 
-    private Proveedor findProveedorActivoOrThrowBadRequest(Long providerId) {
-        Proveedor proveedor = proveedorRepository.findById(providerId)
+    private Proveedor findProveedorActivoOrThrowBadRequest(Long providerId, Long organizationId) {
+        Proveedor proveedor = proveedorRepository.findByIdAndOrganizationId(providerId, organizationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Proveedor no encontrado"));
         if (!Boolean.TRUE.equals(proveedor.getActive())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El proveedor no está activo");
@@ -245,14 +265,14 @@ public class ProductoServiceImpl implements ProductoService {
         return proveedor;
     }
 
-    private void validarSkuDisponibleParaCrear(String sku) {
-        if (productoRepository.existsBySku(sku)) {
+    private void validarSkuDisponibleParaCrear(String sku, Long organizationId) {
+        if (productoRepository.existsBySkuAndOrganizationId(sku, organizationId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El SKU ya está en uso");
         }
     }
 
-    private void validarSkuDisponibleParaActualizar(Long idProducto, String sku) {
-        if (productoRepository.existsBySkuAndIdNot(sku, idProducto)) {
+    private void validarSkuDisponibleParaActualizar(Long idProducto, String sku, Long organizationId) {
+        if (productoRepository.existsBySkuAndOrganizationIdAndIdNot(sku, organizationId, idProducto)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El SKU ya está en uso");
         }
     }
@@ -267,7 +287,8 @@ public class ProductoServiceImpl implements ProductoService {
         }
 
         if (message.contains("fk_bundle_items_product")) {
-            List<String> bundles = findBundleNamesByProductId(productId);
+            Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+            List<String> bundles = findBundleNamesByProductId(productId, organizationId);
             if (bundles.isEmpty()) {
                 return "No se puede eliminar el producto porque está asociado a uno o más bundles";
             }
@@ -278,15 +299,17 @@ public class ProductoServiceImpl implements ProductoService {
         return "No se puede eliminar el producto porque está referenciado por otros registros";
     }
 
-    private List<String> findBundleNamesByProductId(Long productId) {
+    private List<String> findBundleNamesByProductId(Long productId, Long organizationId) {
         String sql = """
                 SELECT b.name
                 FROM bundles b
                 JOIN bundle_items bi ON bi.bundle_id = b.id
                 WHERE bi.product_id = :productId
+                  AND bi.organization_id = :organizationId
                 ORDER BY b.name
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource("productId", productId);
+        MapSqlParameterSource params = new MapSqlParameterSource("productId", productId)
+                .addValue("organizationId", organizationId);
         return jdbcTemplate.queryForList(sql, params, String.class);
     }
 
@@ -338,11 +361,14 @@ public class ProductoServiceImpl implements ProductoService {
                     WHERE ranked_inner.rn = 1
                 ) ranked ON ranked.product_id = p.id
                 WHERE p.id IN (:productIds)
+                  AND p.organization_id = :organizationId
                 """;
 
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 sql,
                 new MapSqlParameterSource("productIds", productIds)
+                        .addValue("organizationId", organizationId)
         );
 
         Map<Long, BigDecimal> result = new HashMap<>();

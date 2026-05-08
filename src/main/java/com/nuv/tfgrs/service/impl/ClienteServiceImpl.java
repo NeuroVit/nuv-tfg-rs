@@ -6,6 +6,7 @@ import com.nuv.tfgrs.dto.response.ClienteResponse;
 import com.nuv.tfgrs.entity.Cliente;
 import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.repository.ClienteRepository;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.ClienteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,13 +21,15 @@ import java.util.List;
 public class ClienteServiceImpl implements ClienteService {
 
     private final ClienteRepository clienteRepository;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<ClienteResponse> listar(boolean includeArchived) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         List<Cliente> clientes = includeArchived
-                ? clienteRepository.findAllByOrderByNameAsc()
-                : clienteRepository.findByActiveTrueOrderByNameAsc();
+                ? clienteRepository.findByOrganizationIdOrderByNameAsc(organizationId)
+                : clienteRepository.findByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId);
 
         return clientes.stream().map(this::toResponse).toList();
     }
@@ -34,9 +37,11 @@ public class ClienteServiceImpl implements ClienteService {
     @Override
     @Transactional
     public ClienteResponse crear(CrearClienteRequest request) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         Cliente cliente = Cliente.builder()
+                .organizationId(organizationId)
                 .name(normalizeRequired(request.nombre(), "El nombre es obligatorio"))
-                .email(normalizeEmail(request.email(), null))
+                .email(normalizeEmail(organizationId, request.email(), null))
                 .phone(normalizeOptional(request.telefono()))
                 .notes(normalizeOptional(request.notas()))
                 .active(true)
@@ -48,9 +53,10 @@ public class ClienteServiceImpl implements ClienteService {
     @Override
     @Transactional
     public ClienteResponse actualizar(Long id, EditarClienteRequest request) {
-        Cliente cliente = findOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Cliente cliente = findOrThrow(id, organizationId);
         cliente.setName(normalizeRequired(request.nombre(), "El nombre es obligatorio"));
-        cliente.setEmail(normalizeEmail(request.email(), id));
+        cliente.setEmail(normalizeEmail(organizationId, request.email(), id));
         cliente.setPhone(normalizeOptional(request.telefono()));
         cliente.setNotes(normalizeOptional(request.notas()));
         return toResponse(clienteRepository.save(cliente));
@@ -59,7 +65,8 @@ public class ClienteServiceImpl implements ClienteService {
     @Override
     @Transactional
     public ClienteResponse archivar(Long id) {
-        Cliente cliente = findOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Cliente cliente = findOrThrow(id, organizationId);
         cliente.setActive(false);
         return toResponse(clienteRepository.save(cliente));
     }
@@ -67,13 +74,14 @@ public class ClienteServiceImpl implements ClienteService {
     @Override
     @Transactional
     public ClienteResponse restaurar(Long id) {
-        Cliente cliente = findOrThrow(id);
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Cliente cliente = findOrThrow(id, organizationId);
         cliente.setActive(true);
         return toResponse(clienteRepository.save(cliente));
     }
 
-    private Cliente findOrThrow(Long id) {
-        return clienteRepository.findById(id)
+    private Cliente findOrThrow(Long id, Long organizationId) {
+        return clienteRepository.findByIdAndOrganizationId(id, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente no encontrado: " + id));
     }
 
@@ -103,7 +111,7 @@ public class ClienteServiceImpl implements ClienteService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private String normalizeEmail(String email, Long currentId) {
+    private String normalizeEmail(Long organizationId, String email, Long currentId) {
         String normalized = normalizeOptional(email);
         if (normalized == null) {
             return null;
@@ -111,10 +119,10 @@ public class ClienteServiceImpl implements ClienteService {
 
         String lowercase = normalized.toLowerCase();
         if (currentId == null) {
-            if (clienteRepository.findByEmail(lowercase).isPresent()) {
+            if (clienteRepository.findByOrganizationIdAndEmail(organizationId, lowercase).isPresent()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un cliente con ese email");
             }
-        } else if (clienteRepository.existsByEmailAndIdNot(lowercase, currentId)) {
+        } else if (clienteRepository.existsByOrganizationIdAndEmailAndIdNot(organizationId, lowercase, currentId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un cliente con ese email");
         }
 

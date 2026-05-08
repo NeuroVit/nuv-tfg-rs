@@ -59,6 +59,9 @@ public class Usuario implements UserDetails {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
+    @Column(name = "must_change_password", nullable = false)
+    private Boolean mustChangePassword;
+
     // Also make password nullable:
     //@Column(nullable = true)
     //private String password;
@@ -69,6 +72,9 @@ public class Usuario implements UserDetails {
         updatedAt = LocalDateTime.now();
         if (active == null) {
             active = true;
+        }
+        if (mustChangePassword == null) {
+            mustChangePassword = false;
         }
     }
  

@@ -32,7 +32,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,8 +57,11 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
-    @Value("${google.client-id}")
+    @Value("${google.client-id:}")
     private String googleClientId;
+
+    @Value("${google.allowed-client-ids:}")
+    private String googleAllowedClientIds;
 
     @Value("${auth.debug.google:false}")
     private boolean googleDebugEnabled;
@@ -78,6 +85,7 @@ public class AuthServiceImpl implements AuthService {
                 .apellidos(request.apellidos())
                 .role(Usuario.Role.ROLE_VIEWER)
                 .active(true)
+                .mustChangePassword(false)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -121,20 +129,31 @@ public class AuthServiceImpl implements AuthService {
             throw new AuthException(HttpStatus.BAD_REQUEST, googleError("credential vacío"));
         }
 
+        String normalizedCredential = credential.trim();
+
         try {
             log.info("Iniciando verificación de login con Google");
-            log.debug("Google auth config: clientId={}, tokenFingerprint={}",
-                    googleClientId, tokenFingerprint(credential));
-            log.debug("Google token hints (UNVERIFIED): {}", extractUnverifiedTokenHints(credential));
+            List<String> allowedClientIds = resolveAllowedGoogleClientIds();
+            if (allowedClientIds.isEmpty()) {
+                String detail = "No hay client IDs de Google configurados (google.client-id / google.allowed-client-ids)";
+                log.warn("Google auth falló: {}", detail);
+                throw new AuthException(HttpStatus.UNAUTHORIZED, googleError(detail));
+            }
+            log.debug("Google auth config: clientIds={}, tokenFingerprint={}",
+                    allowedClientIds, tokenFingerprint(normalizedCredential));
+            log.debug("Google token hints (UNVERIFIED): {}", extractUnverifiedTokenHints(normalizedCredential));
 
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
                     new NetHttpTransport(), new GsonFactory())
-                    .setAudience(Collections.singletonList(googleClientId))
+                    .setAudience(allowedClientIds)
+                    .setAcceptableTimeSkewSeconds(300)
                     .build();
 
-            GoogleIdToken idToken = verifier.verify(credential);
+            GoogleIdToken idToken = verifier.verify(normalizedCredential);
             if (idToken == null) {
-                String detail = "verifier.verify devolvió null; posible mismatch de aud/client-id o token inválido";
+                String detail = "verifier.verify devolvió null; posible mismatch de aud/client-id o token inválido"
+                        + "; tokenHints={" + extractUnverifiedRoutingHints(normalizedCredential) + "}"
+                        + "; expectedAud=" + allowedClientIds;
                 log.warn("Google auth falló: {}", detail);
                 throw new AuthException(HttpStatus.UNAUTHORIZED, googleError(detail));
             }
@@ -159,6 +178,7 @@ public class AuthServiceImpl implements AuthService {
                         nuevo.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
                         nuevo.setRole(Role.ROLE_VIEWER);
                         nuevo.setActive(true);
+                        nuevo.setMustChangePassword(false);
                         nuevo.setCreatedAt(LocalDateTime.now());
                         nuevo.setUpdatedAt(LocalDateTime.now());
                         return nuevo;
@@ -286,6 +306,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         usuario.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        usuario.setMustChangePassword(false);
         usuario.setUpdatedAt(LocalDateTime.now());
         usuarioRepository.save(usuario);
     }
@@ -311,7 +332,8 @@ public class AuthServiceImpl implements AuthService {
                 accessToken,
                 usuario.getUsername(),
                 usuario.getRole().name(),
-                jwtService.getAccessExpirationMs()
+                jwtService.getAccessExpirationMs(),
+                Boolean.TRUE.equals(usuario.getMustChangePassword())
         );
         return new AuthTokens(authResponse, refreshToken);
     }
@@ -354,6 +376,23 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    private String extractUnverifiedRoutingHints(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                return "jwt_formato_invalido";
+            }
+            String payloadJson = new String(Base64.decodeBase64(parts[1]), StandardCharsets.UTF_8);
+            return "iss=" + fieldValue(payloadJson, "iss")
+                    + ", aud=" + fieldValue(payloadJson, "aud")
+                    + ", azp=" + fieldValue(payloadJson, "azp")
+                    + ", exp=" + fieldValue(payloadJson, "exp")
+                    + ", iat=" + fieldValue(payloadJson, "iat");
+        } catch (Exception ex) {
+            return "no_se_pudo_parsear_payload_jwt:" + ex.getClass().getSimpleName();
+        }
+    }
+
     private String fieldValue(String json, String field) {
         Pattern stringPattern = Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*\"([^\"]*)\"");
         Matcher stringMatcher = stringPattern.matcher(json);
@@ -391,5 +430,38 @@ public class AuthServiceImpl implements AuthService {
         } catch (IllegalArgumentException ex) {
             throw new AuthException(HttpStatus.BAD_REQUEST, "Rol inválido. Usa ADMIN, MANAGER o VIEWER", ex);
         }
+    }
+
+    private List<String> resolveAllowedGoogleClientIds() {
+        Set<String> unique = new LinkedHashSet<>();
+        unique.addAll(parseClientIds(googleClientId));
+        unique.addAll(parseClientIds(googleAllowedClientIds));
+        return new ArrayList<>(unique);
+    }
+
+    private List<String> parseClientIds(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        List<String> ids = new ArrayList<>();
+        for (String candidate : rawValue.split(",")) {
+            String normalized = stripWrappingQuotes(candidate == null ? "" : candidate.trim());
+            if (!normalized.isBlank()) {
+                ids.add(normalized);
+            }
+        }
+        return ids;
+    }
+
+    private String stripWrappingQuotes(String value) {
+        if (value.length() >= 2) {
+            boolean doubleQuoted = value.startsWith("\"") && value.endsWith("\"");
+            boolean singleQuoted = value.startsWith("'") && value.endsWith("'");
+            if (doubleQuoted || singleQuoted) {
+                return value.substring(1, value.length() - 1).trim();
+            }
+        }
+        return value;
     }
 }
