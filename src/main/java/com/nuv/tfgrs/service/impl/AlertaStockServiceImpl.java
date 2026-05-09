@@ -7,8 +7,10 @@ import com.nuv.tfgrs.repository.AlertaStockRepository;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.AlertaStockService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -45,8 +47,28 @@ public class AlertaStockServiceImpl implements AlertaStockService {
         AlertaStock alert = alertaStockRepository.findByIdAndOrganizationId(alertId, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Alerta no encontrada: " + alertId));
 
+        if (isActiveStockAlert(alert) && productStillUnderStockThreshold(alert)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede resolver la alerta mientras el producto siga con stock bajo. Repon el inventario primero."
+            );
+        }
+
         alert.setResolved(true);
         alert.setResolvedAt(LocalDateTime.now());
         return AlertaStockResponse.from(alertaStockRepository.save(alert));
+    }
+
+    private boolean isActiveStockAlert(AlertaStock alert) {
+        return alert.getAlertType() == AlertaStock.AlertType.LOW_STOCK
+                || alert.getAlertType() == AlertaStock.AlertType.OUT_OF_STOCK;
+    }
+
+    private boolean productStillUnderStockThreshold(AlertaStock alert) {
+        Integer currentQuantity = alert.getProduct().getCurrentQuantity();
+        Integer minimumStockLevel = alert.getProduct().getMinimumStockLevel();
+        int current = currentQuantity == null ? 0 : currentQuantity;
+        int minimum = minimumStockLevel == null ? 0 : minimumStockLevel;
+        return current <= minimum;
     }
 }
