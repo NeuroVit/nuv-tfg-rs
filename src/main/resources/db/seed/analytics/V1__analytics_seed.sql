@@ -356,3 +356,147 @@ WHERE p.sku = 'MOCK-LOSS-001'
         AND ph.old_price = 12.99
         AND ph.new_price = 14.99
   );
+
+-- 6) Historical series for long-range charts (home + analytics)
+DROP TEMPORARY TABLE IF EXISTS tmp_seed_numbers;
+CREATE TEMPORARY TABLE tmp_seed_numbers (
+    n INT NOT NULL PRIMARY KEY
+);
+
+INSERT INTO tmp_seed_numbers (n)
+SELECT
+    ones.n + tens.n * 10 + hundreds.n * 100 + 1 AS n
+FROM
+    (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+     UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) ones
+CROSS JOIN
+    (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+     UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) tens
+CROSS JOIN
+    (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+     UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) hundreds;
+
+DROP TEMPORARY TABLE IF EXISTS tmp_seed_hist_sales;
+CREATE TEMPORARY TABLE tmp_seed_hist_sales (
+    n INT NOT NULL PRIMARY KEY,
+    sold_at DATETIME NOT NULL,
+    notes VARCHAR(120) NOT NULL,
+    sku VARCHAR(40) NOT NULL,
+    quantity INT NOT NULL,
+    discount_pct DECIMAL(5,2) NOT NULL
+);
+
+INSERT INTO tmp_seed_hist_sales (n, sold_at, notes, sku, quantity, discount_pct)
+SELECT
+    sn.n,
+    NOW()
+        - INTERVAL (sn.n * 2) DAY
+        - INTERVAL ((sn.n * 5) % 24) HOUR
+        - INTERVAL ((sn.n * 11) % 60) MINUTE,
+    CONCAT('[ANALYTICS_SEED] HIST-SALE-', LPAD(sn.n, 3, '0')),
+    CASE sn.n % 6
+        WHEN 0 THEN 'ELEC-001'
+        WHEN 1 THEN 'ELEC-007'
+        WHEN 2 THEN 'OFF-001'
+        WHEN 3 THEN 'ELEC-003'
+        WHEN 4 THEN 'PNT-001'
+        ELSE 'MOCK-LOSS-001'
+    END,
+    CASE sn.n % 5
+        WHEN 0 THEN 1
+        WHEN 1 THEN 2
+        WHEN 2 THEN 3
+        WHEN 3 THEN 4
+        ELSE 5
+    END,
+    CASE
+        WHEN sn.n % 6 = 5 THEN 7.50
+        WHEN sn.n % 4 = 0 THEN 3.00
+        ELSE 0.00
+    END
+FROM tmp_seed_numbers sn
+WHERE sn.n <= 180;
+
+INSERT INTO sales (organization_id, client_id, sold_at, notes, subtotal_amount, discount_total_amount, global_discount_pct, total_amount, created_by, created_at)
+SELECT
+    c.organization_id,
+    c.id,
+    hs.sold_at,
+    hs.notes,
+    ROUND(p.unit_price * hs.quantity, 2),
+    ROUND(
+        (p.unit_price * hs.quantity)
+        - (ROUND(p.unit_price * (1 - hs.discount_pct / 100), 2) * hs.quantity),
+        2
+    ),
+    0,
+    ROUND(ROUND(p.unit_price * (1 - hs.discount_pct / 100), 2) * hs.quantity, 2),
+    NULL,
+    hs.sold_at
+FROM tmp_seed_hist_sales hs
+JOIN clients c ON c.email = 'analytics.client1@nuv.local' AND c.organization_id = @seed_org_id
+JOIN products p ON p.organization_id = c.organization_id AND p.sku = hs.sku
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM sales s
+    WHERE s.organization_id = c.organization_id
+      AND s.notes = hs.notes
+);
+
+INSERT INTO sale_items (sale_id, organization_id, product_id, quantity, list_unit_price_snapshot, discount_pct_snapshot, unit_price_snapshot, cost_price_snapshot)
+SELECT
+    s.id,
+    s.organization_id,
+    p.id,
+    hs.quantity,
+    p.unit_price,
+    hs.discount_pct,
+    ROUND(p.unit_price * (1 - hs.discount_pct / 100), 2),
+    COALESCE(p.acquisition_price, p.unit_price)
+FROM tmp_seed_hist_sales hs
+JOIN sales s ON s.organization_id = @seed_org_id AND s.notes = hs.notes
+JOIN products p ON p.organization_id = s.organization_id AND p.sku = hs.sku
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM sale_items si
+    WHERE si.sale_id = s.id
+      AND si.product_id = p.id
+);
+
+INSERT INTO stock_movements (organization_id, product_id, delta, reason, notes, moved_at)
+SELECT
+    p.organization_id,
+    p.id,
+    -hs.quantity,
+    'SALE',
+    CONCAT('[ANALYTICS_SEED] HIST-MOVE-SALE-', LPAD(hs.n, 3, '0')),
+    hs.sold_at
+FROM tmp_seed_hist_sales hs
+JOIN products p ON p.organization_id = @seed_org_id AND p.sku = hs.sku
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM stock_movements sm
+    WHERE sm.organization_id = p.organization_id
+      AND sm.notes = CONCAT('[ANALYTICS_SEED] HIST-MOVE-SALE-', LPAD(hs.n, 3, '0'))
+);
+
+INSERT INTO stock_movements (organization_id, product_id, delta, reason, notes, moved_at)
+SELECT
+    p.organization_id,
+    p.id,
+    hs.quantity + 6,
+    'PURCHASE',
+    CONCAT('[ANALYTICS_SEED] HIST-MOVE-PURCHASE-', LPAD(hs.n, 3, '0')),
+    hs.sold_at - INTERVAL 1 DAY
+FROM tmp_seed_hist_sales hs
+JOIN products p ON p.organization_id = @seed_org_id AND p.sku = hs.sku
+WHERE MOD(hs.n, 9) = 0
+  AND NOT EXISTS (
+      SELECT 1
+      FROM stock_movements sm
+      WHERE sm.organization_id = p.organization_id
+        AND sm.notes = CONCAT('[ANALYTICS_SEED] HIST-MOVE-PURCHASE-', LPAD(hs.n, 3, '0'))
+  );
+
+DROP TEMPORARY TABLE IF EXISTS tmp_seed_hist_sales;
+DROP TEMPORARY TABLE IF EXISTS tmp_seed_numbers;

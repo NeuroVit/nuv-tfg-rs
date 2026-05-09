@@ -34,7 +34,7 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class AnaliticaServiceImpl implements AnaliticaService {
 
-    private static final String ANALYTICS_SEED_KEY = "analytics_seed_v2";
+    private static final String ANALYTICS_SEED_KEY = "analytics_seed_v3";
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final CurrentOrganizationResolver currentOrganizationResolver;
     @Value("${analytics.seed.enabled:false}")
