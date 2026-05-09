@@ -34,7 +34,7 @@ public class MovimientoStockQueryServiceImpl implements MovimientoStockQueryServ
             Integer offset
     ) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
-        int safeLimit = Math.max(1, Math.min(limit == null ? 20 : limit, 100));
+        int safeLimit = Math.max(1, Math.min(limit == null ? 20 : limit, 1000));
         int safeOffset = Math.max(0, offset == null ? 0 : offset);
 
         String normalizedTipo = tipo == null ? null : tipo.trim().toUpperCase();
