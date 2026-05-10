@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -446,11 +447,15 @@ public class AuthController {
         String path = deepLinkUri.getRawPath() == null ? "" : deepLinkUri.getRawPath();
         String query = deepLinkUri.getRawQuery();
         String queryPart = (query == null || query.isBlank()) ? "" : "?" + query;
+        String fallback = "https://web-production-b34f68.up.railway.app/api/auth/google/mobile/intent-fallback";
+        String encodedFallback = URLEncoder.encode(fallback, StandardCharsets.UTF_8);
         return "intent://" + host + path + queryPart
                 + "#Intent;scheme=" + scheme
                 + ";package=" + ANDROID_APP_PACKAGE_ID
+                + ";component=" + ANDROID_APP_PACKAGE_ID + "/.MainActivity"
                 + ";action=android.intent.action.VIEW"
                 + ";category=android.intent.category.BROWSABLE"
+                + ";S.browser_fallback_url=" + encodedFallback
                 + ";end";
     }
 
