@@ -1,6 +1,7 @@
 package com.nuv.tfgrs.service.impl;
 
 import com.nuv.tfgrs.dto.response.OrganizationSessionResponse;
+import com.nuv.tfgrs.dto.response.OrganizationSearchResponse;
 import com.nuv.tfgrs.dto.response.OrganizationWithMembershipResponse;
 import com.nuv.tfgrs.entity.Organization;
 import com.nuv.tfgrs.entity.OrganizationMembership;
@@ -14,12 +15,14 @@ import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.security.org.OrganizationContext;
 import com.nuv.tfgrs.service.OrganizationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.text.Normalizer;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Locale;
 
 @Service
@@ -60,6 +63,49 @@ public class OrganizationServiceImpl implements OrganizationService {
         usuarioRepository.save(currentUser);
 
         return OrganizationWithMembershipResponse.from(organization, membership);
+    }
+
+    @Override
+    @Transactional
+    public OrganizationWithMembershipResponse joinOrganizationForCurrentUser(Long organizationId) {
+        OrganizationContext context = currentOrganizationResolver.resolveCurrentContext();
+        Usuario currentUser = context.currentUser();
+
+        if (membershipRepository.existsByUser(currentUser)) {
+            throw new AuthException(HttpStatus.CONFLICT, "El usuario ya pertenece a una organización");
+        }
+
+        Organization organization = organizationRepository.findById(organizationId)
+                .orElseThrow(() -> new AuthException(HttpStatus.NOT_FOUND, "Organización no encontrada"));
+
+        OrganizationMembership membership = membershipRepository.save(OrganizationMembership.builder()
+                .organization(organization)
+                .user(currentUser)
+                .role(MembershipRole.MEMBER)
+                .build());
+
+        currentUser.setRole(Usuario.Role.ROLE_VIEWER);
+        currentUser.setUpdatedAt(LocalDateTime.now());
+        usuarioRepository.save(currentUser);
+
+        return OrganizationWithMembershipResponse.from(organization, membership);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrganizationSearchResponse> searchOrganizations(String query, int limit) {
+        String normalizedQuery = query == null ? "" : query.trim();
+        if (normalizedQuery.isBlank()) {
+            return List.of();
+        }
+
+        int safeLimit = Math.max(1, Math.min(limit, 25));
+
+        return organizationRepository
+                .findByNameContainingIgnoreCaseOrderByNameAsc(normalizedQuery, PageRequest.of(0, safeLimit))
+                .stream()
+                .map(OrganizationSearchResponse::from)
+                .toList();
     }
 
     @Override

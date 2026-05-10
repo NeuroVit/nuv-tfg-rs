@@ -23,7 +23,7 @@ import java.sql.Connection;
 @Slf4j
 public class AnalyticsSeedRunner implements ApplicationRunner {
 
-    private static final String SEED_KEY = "analytics_seed_v2";
+    private static final String SEED_KEY = "analytics_seed_v3";
     private static final String SEEDED_SALE_PREFIX = "[ANALYTICS_SEED] SALE-";
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final DataSource dataSource;
