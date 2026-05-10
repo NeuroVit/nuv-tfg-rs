@@ -245,6 +245,10 @@ public class AuthServiceImpl implements AuthService {
         Usuario usuario = usuarioRepository.findByUsername(username)
                 .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
 
+        if (usuario.getRole() == Role.ROLE_VIEWER) {
+            throw new AuthException(HttpStatus.FORBIDDEN, "Los usuarios visualizadores no pueden cambiar su rol");
+        }
+
         Role nuevoRol = parseRole(role);
         Role oldRole = usuario.getRole();
         usuario.setRole(nuevoRol);
