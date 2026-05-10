@@ -100,6 +100,84 @@ class OrganizationOnboardingIntegrationTest {
     }
 
     @Test
+    void searchAndJoinOrganization_shouldCreateMemberMembershipAndDisableOnboarding() throws Exception {
+        Long targetOrganizationId = insertOrganization("Acme Search Org", "acme-search-org-" + System.nanoTime());
+        String username = "joiner_" + System.nanoTime();
+        insertUserWithoutMembership(username, username + "@test.local", "ROLE_ADMIN");
+
+        MvcResult searchResult = mockMvc.perform(get("/api/organizations/search")
+                        .param("query", "Acme Search")
+                        .with(user(username).roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode searchBody = objectMapper.readTree(searchResult.getResponse().getContentAsByteArray());
+        boolean containsTarget = false;
+        for (JsonNode row : searchBody) {
+            if (row.path("id").asLong() == targetOrganizationId) {
+                containsTarget = true;
+                break;
+            }
+        }
+        assertTrue(containsTarget);
+
+        MvcResult joinResult = mockMvc.perform(post("/api/organizations/join")
+                        .with(user(username).roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(Map.of("organizationId", targetOrganizationId))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode joinBody = objectMapper.readTree(joinResult.getResponse().getContentAsByteArray());
+        assertEquals("member", joinBody.path("membership").path("role").asText());
+        assertEquals(targetOrganizationId.longValue(), joinBody.path("organization").path("id").asLong());
+
+        String roleInDb = jdbcTemplate.queryForObject(
+                "SELECT role FROM users WHERE username = :username",
+                new MapSqlParameterSource("username", username),
+                String.class
+        );
+        assertEquals("ROLE_VIEWER", roleInDb);
+
+        MvcResult sessionResult = mockMvc.perform(get("/api/auth/session")
+                        .with(user(username).roles("VIEWER")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode sessionBody = objectMapper.readTree(sessionResult.getResponse().getContentAsByteArray());
+        assertFalse(sessionBody.path("requiresOrganizationOnboarding").asBoolean());
+        assertEquals("member", sessionBody.path("role").asText());
+        assertEquals(targetOrganizationId.longValue(), sessionBody.path("organization").path("id").asLong());
+    }
+
+    @Test
+    void joinOrganization_shouldReturnConflict_whenUserAlreadyHasMembership() throws Exception {
+        Long currentOrg = insertOrganization("Current Org", "current-org-" + System.nanoTime());
+        Long otherOrg = insertOrganization("Other Org", "other-org-" + System.nanoTime());
+        String username = "already_member_" + System.nanoTime();
+        Long userId = insertUserWithoutMembership(username, username + "@test.local");
+        insertMembership(currentOrg, userId, "MEMBER");
+
+        mockMvc.perform(post("/api/organizations/join")
+                        .with(user(username).roles("VIEWER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(Map.of("organizationId", otherOrg))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void joinOrganization_shouldReturnNotFound_whenOrganizationDoesNotExist() throws Exception {
+        String username = "missing_org_" + System.nanoTime();
+        insertUserWithoutMembership(username, username + "@test.local");
+
+        mockMvc.perform(post("/api/organizations/join")
+                        .with(user(username).roles("VIEWER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(Map.of("organizationId", Long.MAX_VALUE))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void organizationOwnedData_shouldBeFilteredByCurrentOrganization() throws Exception {
         Long orgB = insertOrganization("Org C", "org-c-" + System.nanoTime());
         insertClient(orgB, "Cliente Org C");
@@ -118,16 +196,21 @@ class OrganizationOnboardingIntegrationTest {
     }
 
     private Long insertUserWithoutMembership(String username, String email) {
+        return insertUserWithoutMembership(username, email, "ROLE_VIEWER");
+    }
+
+    private Long insertUserWithoutMembership(String username, String email, String role) {
         String sql = """
                 INSERT INTO users (username, email, password_hash, role, is_active, must_change_password, created_at, updated_at)
-                VALUES (:username, :email, :passwordHash, 'ROLE_VIEWER', 1, 0, NOW(), NOW())
+                VALUES (:username, :email, :passwordHash, :role, 1, 0, NOW(), NOW())
                 """;
 
         GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(sql, new MapSqlParameterSource()
                 .addValue("username", username)
                 .addValue("email", email)
-                .addValue("passwordHash", passwordEncoder.encode("Password9A")), keyHolder, new String[]{"id"});
+                .addValue("passwordHash", passwordEncoder.encode("Password9A"))
+                .addValue("role", role), keyHolder, new String[]{"id"});
 
         Number key = keyHolder.getKey();
         assertNotNull(key);
