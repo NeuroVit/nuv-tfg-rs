@@ -48,11 +48,13 @@ public class AuthController {
 
     private static final String REFRESH_TOKEN_COOKIE_NAME = "refreshToken";
     private static final long MOBILE_CREDENTIAL_TTL_MS = 120_000L;
+    private static final long MOBILE_CONSUMED_TICKET_GRACE_TTL_MS = 30_000L;
     private static final String ANDROID_APP_PACKAGE_ID = "com.neurovit.desktop";
 
     private final AuthService authService;
     private final OrganizationService organizationService;
     private final Map<String, PendingMobileCredential> pendingMobileCredentials = new ConcurrentHashMap<>();
+    private final Map<String, PendingMobileCredential> consumedMobileCredentials = new ConcurrentHashMap<>();
 
     @Value("${jwt.refresh-cookie-secure:false}")
     private boolean refreshCookieSecure;
@@ -289,7 +291,25 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "missing_ticket"));
         }
 
-        PendingMobileCredential pending = pendingMobileCredentials.remove(ticket.trim());
+        String normalizedTicket = ticket.trim();
+        PendingMobileCredential pending = pendingMobileCredentials.remove(normalizedTicket);
+        if (pending != null) {
+            long now = System.currentTimeMillis();
+            long graceExpiry = Math.min(
+                    pending.expiresAtEpochMs(),
+                    now + MOBILE_CONSUMED_TICKET_GRACE_TTL_MS
+            );
+            consumedMobileCredentials.put(
+                    normalizedTicket,
+                    new PendingMobileCredential(pending.credential(), graceExpiry)
+            );
+        } else {
+            pending = consumedMobileCredentials.get(normalizedTicket);
+            if (pending != null) {
+                log.info("Google mobile credential consume served from grace cache");
+            }
+        }
+
         if (pending == null || pending.expiresAtEpochMs() < System.currentTimeMillis()) {
             log.warn("Google mobile credential consume failed: invalid_or_expired_ticket");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "invalid_or_expired_ticket"));
@@ -558,6 +578,7 @@ public class AuthController {
     private void purgeExpiredMobileCredentialTickets() {
         long now = System.currentTimeMillis();
         pendingMobileCredentials.entrySet().removeIf(entry -> entry.getValue().expiresAtEpochMs() < now);
+        consumedMobileCredentials.entrySet().removeIf(entry -> entry.getValue().expiresAtEpochMs() < now);
     }
 
     private record MobileState(String originalState, String deeplink) {}
