@@ -447,7 +447,11 @@ public class AuthController {
         String query = deepLinkUri.getRawQuery();
         String queryPart = (query == null || query.isBlank()) ? "" : "?" + query;
         return "intent://" + host + path + queryPart
-                + "#Intent;scheme=" + scheme + ";package=" + ANDROID_APP_PACKAGE_ID + ";end";
+                + "#Intent;scheme=" + scheme
+                + ";package=" + ANDROID_APP_PACKAGE_ID
+                + ";action=android.intent.action.VIEW"
+                + ";category=android.intent.category.BROWSABLE"
+                + ";end";
     }
 
     private List<String> parseAllowedDeepLinkPrefixes() {
