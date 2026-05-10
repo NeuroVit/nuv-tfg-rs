@@ -410,6 +410,10 @@ public class AuthController {
 
         String deepLink = deepLinkUri.toString();
         String intentLink = buildAndroidIntentLink(deepLinkUri);
+        String deepLinkJs = toJsStringLiteral(deepLink);
+        String intentLinkJs = toJsStringLiteral(intentLink);
+        String deepLinkHtml = escapeHtmlAttr(deepLink);
+        String intentLinkHtml = escapeHtmlAttr(intentLink);
         String html = """
                 <!doctype html>
                 <html lang="en">
@@ -428,13 +432,20 @@ public class AuthController {
                   <div class="card">
                     <h2>Returning to Neurovit...</h2>
                     <p>Tap one of these buttons to go back to the app.</p>
-                    <a class="btn" href="%s">Back to app</a>
-                    <a class="btn" href="%s">Open with Android intent</a>
+                    <a class="btn" href="%s" onclick="openDeepLink(event, '%s')">Back to app</a>
+                    <a class="btn" href="%s" onclick="openDeepLink(event, '%s')">Open with Android intent</a>
                     <p class="muted">You can safely close this tab after returning to the app.</p>
                   </div>
+                  <script>
+                    function openDeepLink(event, url) {
+                      event.preventDefault();
+                      window.location.assign(url);
+                      return false;
+                    }
+                  </script>
                 </body>
                 </html>
-                """.formatted(deepLink, intentLink);
+                """.formatted(deepLinkHtml, deepLinkJs, intentLinkHtml, intentLinkJs);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
@@ -457,6 +468,23 @@ public class AuthController {
                 + ";category=android.intent.category.BROWSABLE"
                 + ";S.browser_fallback_url=" + encodedFallback
                 + ";end";
+    }
+
+    private String escapeHtmlAttr(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("\"", "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+    }
+
+    private String toJsStringLiteral(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     private List<String> parseAllowedDeepLinkPrefixes() {
