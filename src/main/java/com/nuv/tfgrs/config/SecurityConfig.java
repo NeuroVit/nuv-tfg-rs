@@ -72,6 +72,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         var config = new CorsConfiguration();
         config.setAllowedOrigins(resolveAllowedOrigins());
+        config.setAllowedOriginPatterns(resolveAllowedOriginPatterns());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of(
                 "Authorization",
@@ -103,6 +104,17 @@ public class SecurityConfig {
         }
 
         return origins;
+    }
+
+    private List<String> resolveAllowedOriginPatterns() {
+        // Some iOS WebView/Tauri flows can surface non-standard or null-like origins.
+        // Keep explicit CORS origins as primary control, and use targeted patterns as fallback.
+        return List.of(
+                "tauri://*",
+                "http://tauri.localhost",
+                "https://tauri.localhost",
+                "null"
+        );
     }
 
     @Bean
