@@ -47,6 +47,7 @@ public class AuthController {
 
     private static final String REFRESH_TOKEN_COOKIE_NAME = "refreshToken";
     private static final long MOBILE_CREDENTIAL_TTL_MS = 120_000L;
+    private static final String ANDROID_APP_PACKAGE_ID = "com.neurovit.desktop";
 
     private final AuthService authService;
     private final OrganizationService organizationService;
@@ -407,6 +408,7 @@ public class AuthController {
         }
 
         String deepLink = deepLinkUri.toString();
+        String intentLink = buildAndroidIntentLink(deepLinkUri);
         String html = """
                 <!doctype html>
                 <html lang="en">
@@ -424,21 +426,28 @@ public class AuthController {
                 <body>
                   <div class="card">
                     <h2>Returning to Neurovit...</h2>
-                    <p>If the app does not open automatically, tap the button below.</p>
+                    <p>Tap one of these buttons to go back to the app.</p>
                     <a class="btn" href="%s">Back to app</a>
+                    <a class="btn" href="%s">Open with Android intent</a>
                     <p class="muted">You can safely close this tab after returning to the app.</p>
                   </div>
-                  <script>
-                    window.location.href = "%s";
-                    setTimeout(function () { window.location.href = "%s"; }, 800);
-                  </script>
                 </body>
                 </html>
-                """.formatted(deepLink, deepLink, deepLink);
+                """.formatted(deepLink, intentLink);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
                 .body(html);
+    }
+
+    private String buildAndroidIntentLink(URI deepLinkUri) {
+        String scheme = deepLinkUri.getScheme() == null ? "neurovit" : deepLinkUri.getScheme();
+        String host = deepLinkUri.getHost() == null ? "auth" : deepLinkUri.getHost();
+        String path = deepLinkUri.getRawPath() == null ? "" : deepLinkUri.getRawPath();
+        String query = deepLinkUri.getRawQuery();
+        String queryPart = (query == null || query.isBlank()) ? "" : "?" + query;
+        return "intent://" + host + path + queryPart
+                + "#Intent;scheme=" + scheme + ";package=" + ANDROID_APP_PACKAGE_ID + ";end";
     }
 
     private List<String> parseAllowedDeepLinkPrefixes() {
