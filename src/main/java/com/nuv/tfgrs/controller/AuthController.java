@@ -140,7 +140,7 @@ public class AuthController {
     }
 
     @GetMapping("/google/mobile/callback")
-    public ResponseEntity<Void> completeGoogleMobileLogin(
+    public ResponseEntity<?> completeGoogleMobileLogin(
             @RequestParam(value = "code", required = false) String code,
             @RequestParam(value = "state", required = false) String stateEnvelope,
             @RequestParam(value = "error", required = false) String error,
@@ -158,21 +158,24 @@ public class AuthController {
         );
 
         if (error != null && !error.isBlank()) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(buildDeepLinkUri(deeplink, "error", originalState, null, error))
-                    .build();
+            return buildDeepLinkRedirectResponse(
+                    request,
+                    buildDeepLinkUri(deeplink, "error", originalState, null, error)
+            );
         }
 
         if (code == null || code.isBlank()) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(buildDeepLinkUri(deeplink, "error", originalState, null, "missing_code"))
-                    .build();
+            return buildDeepLinkRedirectResponse(
+                    request,
+                    buildDeepLinkUri(deeplink, "error", originalState, null, "missing_code")
+            );
         }
 
         if (googleClientId == null || googleClientId.isBlank() || googleClientSecret == null || googleClientSecret.isBlank()) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(buildDeepLinkUri(deeplink, "error", originalState, null, "google_server_config"))
-                    .build();
+            return buildDeepLinkRedirectResponse(
+                    request,
+                    buildDeepLinkUri(deeplink, "error", originalState, null, "google_server_config")
+            );
         }
 
         try {
@@ -195,22 +198,22 @@ public class AuthController {
             String idToken = tokenResponse == null ? null : (String) tokenResponse.get("id_token");
             if (idToken == null || idToken.isBlank()) {
                 log.warn("Google mobile callback: token exchange response missing id_token");
-                return ResponseEntity.status(HttpStatus.FOUND)
-                        .location(buildDeepLinkUri(deeplink, "error", originalState, null, "missing_id_token"))
-                        .build();
+                return buildDeepLinkRedirectResponse(
+                        request,
+                        buildDeepLinkUri(deeplink, "error", originalState, null, "missing_id_token")
+                );
             }
 
             String ticket = issueMobileCredentialTicket(idToken);
             URI successUri = buildDeepLinkUri(deeplink, "success", originalState, ticket, null);
             log.info("Google mobile callback success redirect: {}", successUri);
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(successUri)
-                    .build();
+            return buildDeepLinkRedirectResponse(request, successUri);
         } catch (Exception ex) {
             log.error("Google mobile callback token exchange failed", ex);
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(buildDeepLinkUri(deeplink, "error", originalState, null, "token_exchange_failed"))
-                    .build();
+            return buildDeepLinkRedirectResponse(
+                    request,
+                    buildDeepLinkUri(deeplink, "error", originalState, null, "token_exchange_failed")
+            );
         }
     }
 
@@ -394,6 +397,48 @@ public class AuthController {
             return value.substring(0, comma).trim();
         }
         return value.trim();
+    }
+
+    private ResponseEntity<?> buildDeepLinkRedirectResponse(HttpServletRequest request, URI deepLinkUri) {
+        String userAgent = request.getHeader("User-Agent");
+        boolean isAndroid = userAgent != null && userAgent.toLowerCase().contains("android");
+        if (!isAndroid) {
+            return ResponseEntity.status(HttpStatus.FOUND).location(deepLinkUri).build();
+        }
+
+        String deepLink = deepLinkUri.toString();
+        String html = """
+                <!doctype html>
+                <html lang="en">
+                <head>
+                  <meta charset="utf-8" />
+                  <meta name="viewport" content="width=device-width, initial-scale=1" />
+                  <title>Continue in app</title>
+                  <style>
+                    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; line-height: 1.4; }
+                    .card { max-width: 560px; margin: 40px auto; border: 1px solid #ddd; border-radius: 12px; padding: 20px; }
+                    .btn { display: inline-block; margin-top: 12px; background: #111; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; }
+                    .muted { color: #555; font-size: 14px; margin-top: 10px; }
+                  </style>
+                </head>
+                <body>
+                  <div class="card">
+                    <h2>Returning to Neurovit...</h2>
+                    <p>If the app does not open automatically, tap the button below.</p>
+                    <a class="btn" href="%s">Back to app</a>
+                    <p class="muted">You can safely close this tab after returning to the app.</p>
+                  </div>
+                  <script>
+                    window.location.href = "%s";
+                    setTimeout(function () { window.location.href = "%s"; }, 800);
+                  </script>
+                </body>
+                </html>
+                """.formatted(deepLink, deepLink, deepLink);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .body(html);
     }
 
     private List<String> parseAllowedDeepLinkPrefixes() {
