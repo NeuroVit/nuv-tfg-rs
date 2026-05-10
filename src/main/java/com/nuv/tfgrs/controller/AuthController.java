@@ -328,12 +328,7 @@ public class AuthController {
 
     private String resolveMobileCallbackUrlFromStartRequest(HttpServletRequest request) {
         try {
-            String requestDerived = UriComponentsBuilder
-                    .fromUriString(request.getRequestURL().toString())
-                    .replacePath("/api/auth/google/mobile/callback")
-                    .replaceQuery(null)
-                    .build()
-                    .toUriString();
+            String requestDerived = buildExternalCallbackUrl(request);
 
             URI uri = URI.create(requestDerived);
             String host = uri.getHost();
@@ -350,14 +345,55 @@ public class AuthController {
 
     private String resolveMobileCallbackUrlFromCallbackRequest(HttpServletRequest request) {
         try {
-            return UriComponentsBuilder
-                    .fromUriString(request.getRequestURL().toString())
-                    .replaceQuery(null)
-                    .build()
-                    .toUriString();
+            return buildExternalCallbackUrl(request);
         } catch (Exception ex) {
             return googleMobileCallbackUrl;
         }
+    }
+
+    private String buildExternalCallbackUrl(HttpServletRequest request) {
+        String forwardedProto = firstHeaderValue(request, "X-Forwarded-Proto");
+        String forwardedHost = firstHeaderValue(request, "X-Forwarded-Host");
+        String forwardedPort = firstHeaderValue(request, "X-Forwarded-Port");
+
+        String scheme = (forwardedProto == null || forwardedProto.isBlank()) ? request.getScheme() : forwardedProto;
+        String hostPort = (forwardedHost == null || forwardedHost.isBlank()) ? request.getServerName() : forwardedHost;
+
+        String host = hostPort;
+        String port = null;
+        int hostPortSplit = hostPort.lastIndexOf(':');
+        if (hostPortSplit > 0 && hostPort.indexOf(']') < hostPortSplit) {
+            host = hostPort.substring(0, hostPortSplit);
+            port = hostPort.substring(hostPortSplit + 1);
+        }
+
+        if (forwardedPort != null && !forwardedPort.isBlank()) {
+            port = forwardedPort;
+        }
+
+        UriComponentsBuilder builder = UriComponentsBuilder.newInstance()
+                .scheme(scheme)
+                .host(host)
+                .path("/api/auth/google/mobile/callback");
+
+        if (port != null && !port.isBlank()) {
+            if (!(("https".equalsIgnoreCase(scheme) && "443".equals(port))
+                    || ("http".equalsIgnoreCase(scheme) && "80".equals(port)))) {
+                builder.port(Integer.parseInt(port));
+            }
+        }
+
+        return builder.build().toUriString();
+    }
+
+    private String firstHeaderValue(HttpServletRequest request, String header) {
+        String value = request.getHeader(header);
+        if (value == null) return null;
+        int comma = value.indexOf(',');
+        if (comma >= 0) {
+            return value.substring(0, comma).trim();
+        }
+        return value.trim();
     }
 
     private List<String> parseAllowedDeepLinkPrefixes() {
