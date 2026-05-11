@@ -380,11 +380,11 @@ DROP TEMPORARY TABLE IF EXISTS tmp_seed_hist_sales;
 CREATE TEMPORARY TABLE tmp_seed_hist_sales (
     n INT NOT NULL PRIMARY KEY,
     sold_at DATETIME NOT NULL,
-    notes VARCHAR(120) NOT NULL,
-    sku VARCHAR(40) NOT NULL,
+    notes VARCHAR(120) COLLATE utf8mb4_unicode_ci NOT NULL,
+    sku VARCHAR(40) COLLATE utf8mb4_unicode_ci NOT NULL,
     quantity INT NOT NULL,
     discount_pct DECIMAL(5,2) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO tmp_seed_hist_sales (n, sold_at, notes, sku, quantity, discount_pct)
 SELECT
