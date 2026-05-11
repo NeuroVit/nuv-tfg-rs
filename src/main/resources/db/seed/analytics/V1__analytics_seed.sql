@@ -384,7 +384,7 @@ CREATE TEMPORARY TABLE tmp_seed_hist_sales (
     sku VARCHAR(40) NOT NULL,
     quantity INT NOT NULL,
     discount_pct DECIMAL(5,2) NOT NULL
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 INSERT INTO tmp_seed_hist_sales (n, sold_at, notes, sku, quantity, discount_pct)
 SELECT
