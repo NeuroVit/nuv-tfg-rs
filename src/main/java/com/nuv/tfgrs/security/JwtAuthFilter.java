@@ -56,9 +56,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     );
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                } else {
+                    request.setAttribute(BearerAuthEntryPoint.INVALID_TOKEN_REQUEST_ATTRIBUTE, true);
                 }
             }
         } catch (Exception ex) {
+            request.setAttribute(BearerAuthEntryPoint.INVALID_TOKEN_REQUEST_ATTRIBUTE, true);
             log.warn("JWT inválido o expirado");
             log.debug("JWT inválido o expirado en request {}", request.getRequestURI(), ex);
         }

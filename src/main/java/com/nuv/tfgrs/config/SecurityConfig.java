@@ -2,6 +2,7 @@ package com.nuv.tfgrs.config;
 
 import com.nuv.tfgrs.security.JwtAuthFilter;
 import com.nuv.tfgrs.security.AuthRateLimitFilter;
+import com.nuv.tfgrs.security.BearerAuthEntryPoint;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final AuthRateLimitFilter authRateLimitFilter;
+    private final BearerAuthEntryPoint bearerAuthEntryPoint;
     private final UserDetailsService userDetailsService;  // ← inject the standalone service
 
     @Value("${cors.allowed-origins}")
@@ -58,8 +60,12 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .anonymous(AbstractHttpConfigurer::disable)
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions ->
+                    exceptions.authenticationEntryPoint(bearerAuthEntryPoint)
+                )
                 .headers(headers -> headers
                     .crossOriginOpenerPolicy(coop ->
                         coop.policy(CrossOriginOpenerPolicyHeaderWriter.CrossOriginOpenerPolicy.SAME_ORIGIN_ALLOW_POPUPS)
