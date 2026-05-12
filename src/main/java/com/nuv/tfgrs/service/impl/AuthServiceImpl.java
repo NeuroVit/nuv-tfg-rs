@@ -219,6 +219,10 @@ public class AuthServiceImpl implements AuthService {
             Usuario usuario = usuarioRepository.findByUsername(username)
                     .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR));
 
+            if (!usuario.isEnabled()) {
+                throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR);
+            }
+
             if (!jwtService.esRefreshTokenValido(refreshToken, usuario)) {
                 throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR);
             }

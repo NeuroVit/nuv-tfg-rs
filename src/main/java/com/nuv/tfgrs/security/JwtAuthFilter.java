@@ -44,6 +44,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 var userDetails = userDetailsService.loadUserByUsername(username);
 
+                if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+                    SecurityContextHolder.clearContext();
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Cuenta deshabilitada o bloqueada");
+                    return;
+                }
+
                 if (jwtService.esTokenValido(token, userDetails)) {
                     var authToken = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities()
