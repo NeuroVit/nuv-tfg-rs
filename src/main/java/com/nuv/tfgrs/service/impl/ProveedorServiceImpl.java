@@ -66,6 +66,7 @@ public class ProveedorServiceImpl implements ProveedorService {
         Proveedor proveedor = Proveedor.builder()
                 .organizationId(organizationId)
                 .name(nombre)
+                .email(normalizeOptional(request.email()))
                 .warehouseLocation(normalizeRequired(request.ubicacionAlmacen(), "La ubicación del almacén es obligatoria"))
                 .leadTimeDays(request.diasEntrega())
                 .active(true)
@@ -88,6 +89,7 @@ public class ProveedorServiceImpl implements ProveedorService {
         }
 
         proveedor.setName(nombre);
+        proveedor.setEmail(normalizeOptional(request.email()));
         proveedor.setWarehouseLocation(normalizeRequired(
                 request.ubicacionAlmacen(),
                 "La ubicación del almacén es obligatoria"
@@ -171,6 +173,14 @@ public class ProveedorServiceImpl implements ProveedorService {
         if (leadTimeDays == null || leadTimeDays < MIN_LEAD_TIME_DAYS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Días de entrega debe ser mayor o igual a 1");
         }
+    }
+
+    private String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private List<PedidoProveedorResumenResponse> listarPedidosRecientes(Long providerId, Long organizationId) {

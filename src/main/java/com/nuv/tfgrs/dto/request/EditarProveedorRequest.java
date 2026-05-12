@@ -4,11 +4,16 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Email;
 
 public record EditarProveedorRequest(
         @NotBlank
         @Size(max = 100, message = "El nombre no puede superar 100 caracteres")
         String nombre,
+
+        @Email
+        @Size(max = 254)
+        String email,
 
         @NotBlank
         @Size(max = 500)
