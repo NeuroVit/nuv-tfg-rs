@@ -31,13 +31,13 @@ public class UsuarioAdminController {
     private final UsuarioAdminService usuarioAdminService;
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<List<UsuarioAdminResponse>> listar() {
         return ResponseEntity.ok(usuarioAdminService.listar());
     }
 
     @PostMapping("/invite")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<UsuarioInviteResponse> invitar(
             @Valid @RequestBody InvitarUsuarioRequest request,
             Authentication authentication
@@ -47,7 +47,7 @@ public class UsuarioAdminController {
     }
 
     @PatchMapping("/{id}/role")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<UsuarioAdminResponse> actualizarRol(
             @PathVariable Long id,
             @Valid @RequestBody ActualizarRolUsuarioRequest request,
@@ -57,7 +57,7 @@ public class UsuarioAdminController {
     }
 
     @PatchMapping("/{id}/deactivate")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<UsuarioAdminResponse> desactivar(
             @PathVariable Long id,
             Authentication authentication
@@ -66,7 +66,7 @@ public class UsuarioAdminController {
     }
 
     @PatchMapping("/{id}/activate")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<UsuarioAdminResponse> activar(
             @PathVariable Long id,
             Authentication authentication
@@ -75,7 +75,7 @@ public class UsuarioAdminController {
     }
 
     @GetMapping("/auditoria")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<List<UsuarioRoleAuditResponse>> auditoria(
             @RequestParam(name = "limit", defaultValue = "100") int limit
     ) {

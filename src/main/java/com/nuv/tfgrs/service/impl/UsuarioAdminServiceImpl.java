@@ -114,6 +114,7 @@ public class UsuarioAdminServiceImpl implements UsuarioAdminService {
         }
 
         usuario.setActive(false);
+        bumpTokenVersion(usuario);
         usuario.setUpdatedAt(LocalDateTime.now());
         return UsuarioAdminResponse.from(usuarioRepository.save(usuario));
     }
@@ -231,5 +232,10 @@ public class UsuarioAdminServiceImpl implements UsuarioAdminService {
             case ROLE_ADMIN, ROLE_MANAGER -> OrganizationMembership.MembershipRole.ADMIN;
             case ROLE_VIEWER -> OrganizationMembership.MembershipRole.MEMBER;
         };
+    }
+
+    private void bumpTokenVersion(Usuario usuario) {
+        int current = usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion();
+        usuario.setTokenVersion(current + 1);
     }
 }

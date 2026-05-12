@@ -44,15 +44,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 var userDetails = userDetailsService.loadUserByUsername(username);
 
+                if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+                    SecurityContextHolder.clearContext();
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Cuenta deshabilitada o bloqueada");
+                    return;
+                }
+
                 if (jwtService.esTokenValido(token, userDetails)) {
                     var authToken = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities()
                     );
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                } else {
+                    request.setAttribute(BearerAuthEntryPoint.INVALID_TOKEN_REQUEST_ATTRIBUTE, true);
                 }
             }
         } catch (Exception ex) {
+            request.setAttribute(BearerAuthEntryPoint.INVALID_TOKEN_REQUEST_ATTRIBUTE, true);
             log.warn("JWT inválido o expirado");
             log.debug("JWT inválido o expirado en request {}", request.getRequestURI(), ex);
         }

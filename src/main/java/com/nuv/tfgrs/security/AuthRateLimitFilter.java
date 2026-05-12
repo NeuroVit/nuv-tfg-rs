@@ -28,6 +28,10 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     private static final String LOGIN_PATH = "/api/auth/login";
     private static final String REGISTER_PATH = "/api/auth/register";
+    private static final String GOOGLE_VERIFY_PATH = "/api/auth/google/verify";
+    private static final String REFRESH_PATH = "/api/auth/refresh";
+    private static final String CHANGE_PASSWORD_PATH = "/api/auth/change-password";
+    private static final String GOOGLE_MOBILE_CREDENTIAL_PATH = "/api/auth/google/mobile/credential";
 
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
 
@@ -48,6 +52,42 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     @Value("${rate-limit.auth.register.refill-seconds:60}")
     private long registerRefillSeconds;
+
+    @Value("${rate-limit.auth.google-verify.capacity:10}")
+    private long googleVerifyCapacity;
+
+    @Value("${rate-limit.auth.google-verify.refill-tokens:10}")
+    private long googleVerifyRefillTokens;
+
+    @Value("${rate-limit.auth.google-verify.refill-seconds:60}")
+    private long googleVerifyRefillSeconds;
+
+    @Value("${rate-limit.auth.refresh.capacity:30}")
+    private long refreshCapacity;
+
+    @Value("${rate-limit.auth.refresh.refill-tokens:30}")
+    private long refreshRefillTokens;
+
+    @Value("${rate-limit.auth.refresh.refill-seconds:60}")
+    private long refreshRefillSeconds;
+
+    @Value("${rate-limit.auth.change-password.capacity:5}")
+    private long changePasswordCapacity;
+
+    @Value("${rate-limit.auth.change-password.refill-tokens:5}")
+    private long changePasswordRefillTokens;
+
+    @Value("${rate-limit.auth.change-password.refill-seconds:300}")
+    private long changePasswordRefillSeconds;
+
+    @Value("${rate-limit.auth.google-mobile-credential.capacity:20}")
+    private long googleMobileCredentialCapacity;
+
+    @Value("${rate-limit.auth.google-mobile-credential.refill-tokens:20}")
+    private long googleMobileCredentialRefillTokens;
+
+    @Value("${rate-limit.auth.google-mobile-credential.refill-seconds:60}")
+    private long googleMobileCredentialRefillSeconds;
 
     @Override
     protected void doFilterInternal(
@@ -86,14 +126,15 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     }
 
     private boolean isRateLimitedPath(String path) {
-        return LOGIN_PATH.equals(path) || REGISTER_PATH.equals(path);
+        return LOGIN_PATH.equals(path)
+                || REGISTER_PATH.equals(path)
+                || GOOGLE_VERIFY_PATH.equals(path)
+                || REFRESH_PATH.equals(path)
+                || CHANGE_PASSWORD_PATH.equals(path)
+                || GOOGLE_MOBILE_CREDENTIAL_PATH.equals(path);
     }
 
     private String resolveClientId(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
         return request.getRemoteAddr();
     }
 
@@ -103,7 +144,15 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     private Bucket buildBucket(String path) {
         return Bucket.builder()
-                .addLimit(LOGIN_PATH.equals(path) ? loginLimit() : registerLimit())
+                .addLimit(switch (path) {
+                    case LOGIN_PATH -> loginLimit();
+                    case REGISTER_PATH -> registerLimit();
+                    case GOOGLE_VERIFY_PATH -> googleVerifyLimit();
+                    case REFRESH_PATH -> refreshLimit();
+                    case CHANGE_PASSWORD_PATH -> changePasswordLimit();
+                    case GOOGLE_MOBILE_CREDENTIAL_PATH -> googleMobileCredentialLimit();
+                    default -> loginLimit();
+                })
                 .build();
     }
 
@@ -118,6 +167,34 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         return Bandwidth.builder()
                 .capacity(safeValue(registerCapacity))
                 .refillIntervally(safeValue(registerRefillTokens), Duration.ofSeconds(safeValue(registerRefillSeconds)))
+                .build();
+    }
+
+    private Bandwidth googleVerifyLimit() {
+        return Bandwidth.builder()
+                .capacity(safeValue(googleVerifyCapacity))
+                .refillIntervally(safeValue(googleVerifyRefillTokens), Duration.ofSeconds(safeValue(googleVerifyRefillSeconds)))
+                .build();
+    }
+
+    private Bandwidth refreshLimit() {
+        return Bandwidth.builder()
+                .capacity(safeValue(refreshCapacity))
+                .refillIntervally(safeValue(refreshRefillTokens), Duration.ofSeconds(safeValue(refreshRefillSeconds)))
+                .build();
+    }
+
+    private Bandwidth changePasswordLimit() {
+        return Bandwidth.builder()
+                .capacity(safeValue(changePasswordCapacity))
+                .refillIntervally(safeValue(changePasswordRefillTokens), Duration.ofSeconds(safeValue(changePasswordRefillSeconds)))
+                .build();
+    }
+
+    private Bandwidth googleMobileCredentialLimit() {
+        return Bandwidth.builder()
+                .capacity(safeValue(googleMobileCredentialCapacity))
+                .refillIntervally(safeValue(googleMobileCredentialRefillTokens), Duration.ofSeconds(safeValue(googleMobileCredentialRefillSeconds)))
                 .build();
     }
 
