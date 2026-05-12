@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 
 public record EditarProveedorRequest(
         @NotBlank
-        @Size(max = 200)
+        @Size(max = 100, message = "El nombre no puede superar 100 caracteres")
         String nombre,
 
         @NotBlank
@@ -15,7 +15,7 @@ public record EditarProveedorRequest(
         String ubicacionAlmacen,
 
         @NotNull
-        @Min(0)
+        @Min(value = 1, message = "Días de entrega debe ser mayor o igual a 1")
         Integer diasEntrega
 ) {
 }

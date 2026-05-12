@@ -4,6 +4,7 @@ import com.nuv.tfgrs.entity.AlertaStock;
 import com.nuv.tfgrs.entity.Organization;
 import com.nuv.tfgrs.entity.Producto;
 import com.nuv.tfgrs.repository.AlertaStockRepository;
+import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.security.org.OrganizationContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,11 +34,14 @@ class AlertaStockServiceImplTest {
     @Mock
     private CurrentOrganizationResolver currentOrganizationResolver;
 
+    @Mock
+    private ProductoRepository productoRepository;
+
     private AlertaStockServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new AlertaStockServiceImpl(alertaStockRepository, currentOrganizationResolver);
+        service = new AlertaStockServiceImpl(alertaStockRepository, productoRepository, currentOrganizationResolver);
 
         Organization organization = new Organization();
         organization.setId(10L);

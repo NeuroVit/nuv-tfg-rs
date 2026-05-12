@@ -24,4 +24,13 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
     List<Producto> findByProviderIdAndOrganizationIdOrderByNameAsc(Long providerId, Long organizationId);
     @Query("SELECT p FROM Producto p WHERE p.organizationId = :organizationId AND p.id IN :ids")
     List<Producto> findAllByIdInAndOrganizationId(@Param("ids") Iterable<Long> ids, @Param("organizationId") Long organizationId);
+
+    @Query("""
+            SELECT p
+            FROM Producto p
+            WHERE p.organizationId = :organizationId
+              AND p.acquisitionPrice IS NOT NULL
+              AND p.unitPrice < p.acquisitionPrice
+            """)
+    List<Producto> findPriceAnomalyProductsByOrganizationId(@Param("organizationId") Long organizationId);
 }

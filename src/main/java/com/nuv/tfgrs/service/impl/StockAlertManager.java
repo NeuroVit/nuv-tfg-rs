@@ -6,6 +6,7 @@ import com.nuv.tfgrs.repository.AlertaStockRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -20,7 +21,11 @@ public class StockAlertManager {
         if (producto.getOrganizationId() == null) return;
 
         Long organizationId = producto.getOrganizationId();
+        syncStockAlerts(organizationId, producto);
+        syncPriceAnomalyAlerts(organizationId, producto);
+    }
 
+    private void syncStockAlerts(Long organizationId, Producto producto) {
         int current = producto.getCurrentQuantity() == null ? 0 : producto.getCurrentQuantity();
         int minimum = producto.getMinimumStockLevel() == null ? 0 : producto.getMinimumStockLevel();
 
@@ -46,6 +51,34 @@ public class StockAlertManager {
         }
 
         resolveOpenStockAlerts(organizationId, producto.getId());
+    }
+
+    private void syncPriceAnomalyAlerts(Long organizationId, Producto producto) {
+        BigDecimal unitPrice = producto.getUnitPrice();
+        BigDecimal acquisitionPrice = producto.getAcquisitionPrice();
+        boolean hasPriceAnomaly = unitPrice != null
+                && acquisitionPrice != null
+                && unitPrice.compareTo(acquisitionPrice) < 0;
+
+        if (hasPriceAnomaly) {
+            createIfMissing(
+                    organizationId,
+                    producto,
+                    AlertaStock.AlertType.PRICE_ANOMALY,
+                    "Anomalía de precio: precio de venta "
+                            + formatMoney(unitPrice)
+                            + " por debajo del coste "
+                            + formatMoney(acquisitionPrice)
+                            + " en "
+                            + producto.getName()
+                            + " ("
+                            + producto.getSku()
+                            + ")"
+            );
+            return;
+        }
+
+        resolveOpenPriceAnomalyAlerts(organizationId, producto.getId());
     }
 
     private void createIfMissing(Long organizationId, Producto producto, AlertaStock.AlertType type, String message) {
@@ -79,5 +112,24 @@ public class StockAlertManager {
             }
         }
         alertaStockRepository.saveAll(openAlerts);
+    }
+
+    private void resolveOpenPriceAnomalyAlerts(Long organizationId, Long productId) {
+        List<AlertaStock> openAlerts =
+                alertaStockRepository.findByOrganizationIdAndProductIdAndResolvedFalse(organizationId, productId);
+        if (openAlerts.isEmpty()) return;
+
+        LocalDateTime now = LocalDateTime.now();
+        for (AlertaStock alert : openAlerts) {
+            if (alert.getAlertType() == AlertaStock.AlertType.PRICE_ANOMALY) {
+                alert.setResolved(true);
+                alert.setResolvedAt(now);
+            }
+        }
+        alertaStockRepository.saveAll(openAlerts);
+    }
+
+    private String formatMoney(BigDecimal value) {
+        return "€" + value.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
     }
 }

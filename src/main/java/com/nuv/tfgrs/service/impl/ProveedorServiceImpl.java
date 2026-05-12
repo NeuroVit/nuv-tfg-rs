@@ -28,6 +28,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProveedorServiceImpl implements ProveedorService {
 
+    private static final int PROVIDER_NAME_MAX_LENGTH = 100;
+    private static final int MIN_LEAD_TIME_DAYS = 1;
+
     private final ProveedorRepository proveedorRepository;
     private final ProductoRepository productoRepository;
     private final NamedParameterJdbcTemplate jdbcTemplate;
@@ -54,6 +57,8 @@ public class ProveedorServiceImpl implements ProveedorService {
     public ProveedorResponse crear(CrearProveedorRequest request) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         String nombre = normalizeRequired(request.nombre(), "El nombre del proveedor es obligatorio");
+        validateProviderNameLength(nombre);
+        validateLeadTimeDays(request.diasEntrega());
         if (proveedorRepository.existsByNameIgnoreCaseAndOrganizationId(nombre, organizationId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un proveedor con ese nombre");
         }
@@ -76,6 +81,8 @@ public class ProveedorServiceImpl implements ProveedorService {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         Proveedor proveedor = findByIdOrThrow(id, organizationId);
         String nombre = normalizeRequired(request.nombre(), "El nombre del proveedor es obligatorio");
+        validateProviderNameLength(nombre);
+        validateLeadTimeDays(request.diasEntrega());
         if (proveedorRepository.existsByNameIgnoreCaseAndOrganizationIdAndIdNot(nombre, organizationId, id)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe un proveedor con ese nombre");
         }
@@ -152,6 +159,18 @@ public class ProveedorServiceImpl implements ProveedorService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
         return value.trim();
+    }
+
+    private void validateProviderNameLength(String providerName) {
+        if (providerName.length() > PROVIDER_NAME_MAX_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre no puede superar 100 caracteres");
+        }
+    }
+
+    private void validateLeadTimeDays(Integer leadTimeDays) {
+        if (leadTimeDays == null || leadTimeDays < MIN_LEAD_TIME_DAYS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Días de entrega debe ser mayor o igual a 1");
+        }
     }
 
     private List<PedidoProveedorResumenResponse> listarPedidosRecientes(Long providerId, Long organizationId) {
