@@ -27,6 +27,9 @@ public class Proveedor {
     @Column(nullable = false, length = 200)
     private String name;
 
+    @Column(length = 254)
+    private String email;
+
     @Column(name = "warehouse_location", nullable = false, length = 500)
     private String warehouseLocation;
 

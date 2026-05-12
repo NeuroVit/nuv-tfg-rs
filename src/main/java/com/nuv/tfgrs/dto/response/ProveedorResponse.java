@@ -5,6 +5,7 @@ import com.nuv.tfgrs.entity.Proveedor;
 public record ProveedorResponse(
         Long id,
         String nombre,
+        String email,
         String ubicacionAlmacen,
         Integer diasEntrega,
         boolean activo,
@@ -14,6 +15,7 @@ public record ProveedorResponse(
         return new ProveedorResponse(
                 proveedor.getId(),
                 proveedor.getName(),
+                proveedor.getEmail(),
                 proveedor.getWarehouseLocation(),
                 proveedor.getLeadTimeDays(),
                 Boolean.TRUE.equals(proveedor.getActive()),

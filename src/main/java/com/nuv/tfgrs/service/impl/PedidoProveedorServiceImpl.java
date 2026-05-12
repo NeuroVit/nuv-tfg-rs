@@ -1,4 +1,4 @@
-﻿package com.nuv.tfgrs.service.impl;
+package com.nuv.tfgrs.service.impl;
 
 import com.nuv.tfgrs.dto.request.CrearPedidoProveedorRequest;
 import com.nuv.tfgrs.dto.response.PedidoProveedorItemResponse;
@@ -11,8 +11,10 @@ import com.nuv.tfgrs.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.repository.ProveedorRepository;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
+import com.nuv.tfgrs.service.PedidoProveedorEmailService;
 import com.nuv.tfgrs.service.PedidoProveedorService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PedidoProveedorServiceImpl implements PedidoProveedorService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
@@ -39,6 +42,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     private final MovimientoStockRepository movimientoStockRepository;
     private final StockAlertManager stockAlertManager;
     private final CurrentOrganizationResolver currentOrganizationResolver;
+    private final PedidoProveedorEmailService pedidoProveedorEmailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -112,7 +116,15 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         if (updated == 0) {
             throwInvalidStatusTransition(orderId, organizationId, "DRAFT", "No se puede enviar el pedido en su estado actual");
         }
-        return fetchOrderById(orderId, organizationId);
+        PedidoProveedorResponse response = fetchOrderById(orderId, organizationId);
+        try {
+            Proveedor proveedor = proveedorRepository.findByIdAndOrganizationId(response.providerId(), organizationId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Proveedor no encontrado: " + response.providerId()));
+            pedidoProveedorEmailService.enviarPedidoAProveedor(response, proveedor);
+        } catch (Exception ex) {
+            log.warn("No se pudo enviar el correo del pedido #{} al proveedor. El pedido ya quedó en estado SENT.", orderId, ex);
+        }
+        return response;
     }
 
     @Override
