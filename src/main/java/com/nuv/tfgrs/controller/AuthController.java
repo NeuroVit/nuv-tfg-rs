@@ -288,7 +288,10 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletResponse response) {
+    public ResponseEntity<Void> logout(Authentication authentication, HttpServletResponse response) {
+        if (authentication != null && authentication.isAuthenticated()) {
+            authService.revocarTokensUsuarioActual(authentication.getName());
+        }
         clearRefreshCookie(response);
         return ResponseEntity.noContent().build();
     }

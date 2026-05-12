@@ -62,6 +62,9 @@ public class Usuario implements UserDetails {
     @Column(name = "must_change_password", nullable = false)
     private Boolean mustChangePassword;
 
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion;
+
     // Also make password nullable:
     //@Column(nullable = true)
     //private String password;
@@ -75,6 +78,9 @@ public class Usuario implements UserDetails {
         }
         if (mustChangePassword == null) {
             mustChangePassword = false;
+        }
+        if (tokenVersion == null) {
+            tokenVersion = 0;
         }
     }
  

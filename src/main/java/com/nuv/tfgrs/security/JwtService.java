@@ -1,5 +1,6 @@
 package com.nuv.tfgrs.security;
 
+import com.nuv.tfgrs.entity.Usuario;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
@@ -22,6 +23,7 @@ import java.util.function.Function;
 public class JwtService {
 
     private static final String TOKEN_TYPE_CLAIM = "token_type";
+    private static final String TOKEN_VERSION_CLAIM = "token_version";
     private static final String ACCESS_TOKEN_TYPE = "access";
     private static final String REFRESH_TOKEN_TYPE = "refresh";
 
@@ -58,12 +60,14 @@ public class JwtService {
                 .map(a -> a.getAuthority())
                 .orElse(""));
         claims.put(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE);
+        claims.put(TOKEN_VERSION_CLAIM, resolveTokenVersion(userDetails));
         return buildToken(claims, userDetails.getUsername(), accessExpirationMs);
     }
 
     public String generarRefreshToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE);
+        claims.put(TOKEN_VERSION_CLAIM, resolveTokenVersion(userDetails));
         return buildToken(claims, userDetails.getUsername(), refreshExpirationMs);
     }
 
@@ -83,6 +87,7 @@ public class JwtService {
         final String username = extraerUsername(token);
         return username.equals(userDetails.getUsername())
                 && !estaExpirado(token)
+                && coincideTokenVersion(token, userDetails)
                 && ACCESS_TOKEN_TYPE.equals(extraerTipoToken(token));
     }
 
@@ -90,11 +95,25 @@ public class JwtService {
         final String username = extraerUsername(token);
         return username.equals(userDetails.getUsername())
                 && !estaExpirado(token)
+                && coincideTokenVersion(token, userDetails)
                 && REFRESH_TOKEN_TYPE.equals(extraerTipoToken(token));
     }
 
     private String extraerTipoToken(String token) {
         return extraerClaim(token, claims -> claims.get(TOKEN_TYPE_CLAIM, String.class));
+    }
+
+    private boolean coincideTokenVersion(String token, UserDetails userDetails) {
+        Number tokenVersionClaim = extraerClaim(token, claims -> claims.get(TOKEN_VERSION_CLAIM, Number.class));
+        long tokenVersionInToken = tokenVersionClaim == null ? 0L : tokenVersionClaim.longValue();
+        return tokenVersionInToken == resolveTokenVersion(userDetails);
+    }
+
+    private long resolveTokenVersion(UserDetails userDetails) {
+        if (userDetails instanceof Usuario usuario && usuario.getTokenVersion() != null) {
+            return usuario.getTokenVersion();
+        }
+        return 0L;
     }
 
     private String buildToken(Map<String, Object> claims, String subject, long expirationMs) {

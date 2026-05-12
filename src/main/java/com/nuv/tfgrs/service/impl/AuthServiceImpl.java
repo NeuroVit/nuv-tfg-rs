@@ -256,6 +256,7 @@ public class AuthServiceImpl implements AuthService {
         Role nuevoRol = parseRole(role);
         Role oldRole = usuario.getRole();
         usuario.setRole(nuevoRol);
+        bumpTokenVersion(usuario);
         usuario.setUpdatedAt(LocalDateTime.now());
         Usuario saved = usuarioRepository.save(usuario);
         recordRoleChange(saved.getId(), saved.getId(), oldRole, nuevoRol, "SELF_SWITCH");
@@ -315,6 +316,17 @@ public class AuthServiceImpl implements AuthService {
 
         usuario.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         usuario.setMustChangePassword(false);
+        bumpTokenVersion(usuario);
+        usuario.setUpdatedAt(LocalDateTime.now());
+        usuarioRepository.save(usuario);
+    }
+
+    @Override
+    @Transactional
+    public void revocarTokensUsuarioActual(String username) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+        bumpTokenVersion(usuario);
         usuario.setUpdatedAt(LocalDateTime.now());
         usuarioRepository.save(usuario);
     }
@@ -331,6 +343,11 @@ public class AuthServiceImpl implements AuthService {
                 .addValue("newRole", newRole.name())
                 .addValue("reason", reason)
         );
+    }
+
+    private void bumpTokenVersion(Usuario usuario) {
+        int current = usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion();
+        usuario.setTokenVersion(current + 1);
     }
 
     private AuthTokens buildAuthTokens(Usuario usuario) {

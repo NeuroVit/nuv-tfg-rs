@@ -13,4 +13,5 @@ public interface AuthService {
     UserProfileResponse perfilUsuarioActual(String username);
     UserProfileResponse actualizarPerfilUsuarioActual(String username, AuthRequest.UpdateMeRequest request);
     void cambiarPasswordUsuarioActual(String username, AuthRequest.ChangePasswordRequest request);
+    void revocarTokensUsuarioActual(String username);
 }
