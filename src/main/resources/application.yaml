@@ -64,7 +64,7 @@ auth:
   debug:
     google: ${AUTH_DEBUG_GOOGLE:true}
   role-switch:
-    enabled: ${AUTH_ROLE_SWITCH_ENABLED:true}
+    enabled: ${AUTH_ROLE_SWITCH_ENABLED:false}
 
 rate-limit:
   auth:

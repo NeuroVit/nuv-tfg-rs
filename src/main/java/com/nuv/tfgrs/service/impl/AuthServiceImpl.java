@@ -66,7 +66,7 @@ public class AuthServiceImpl implements AuthService {
     @Value("${auth.debug.google:false}")
     private boolean googleDebugEnabled;
 
-    @Value("${auth.role-switch.enabled:true}")
+    @Value("${auth.role-switch.enabled:false}")
     private boolean roleSwitchEnabled;
 
     @Override
