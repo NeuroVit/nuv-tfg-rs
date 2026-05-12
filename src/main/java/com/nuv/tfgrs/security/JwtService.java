@@ -1,6 +1,5 @@
 package com.nuv.tfgrs.security;
 
-import com.nuv.tfgrs.entity.Usuario;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
@@ -110,8 +109,8 @@ public class JwtService {
     }
 
     private long resolveTokenVersion(UserDetails userDetails) {
-        if (userDetails instanceof Usuario usuario && usuario.getTokenVersion() != null) {
-            return usuario.getTokenVersion();
+        if (userDetails instanceof TokenVersionAware tokenVersionAware && tokenVersionAware.getTokenVersion() != null) {
+            return tokenVersionAware.getTokenVersion();
         }
         return 0L;
     }

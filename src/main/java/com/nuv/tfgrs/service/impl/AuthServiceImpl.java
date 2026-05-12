@@ -26,6 +26,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final UserDetailsService userDetailsService;
 
     @Value("${google.client-id:}")
     private String googleClientId;
@@ -351,12 +354,17 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private AuthTokens buildAuthTokens(Usuario usuario) {
-        String accessToken = jwtService.generarAccessToken(usuario);
-        String refreshToken = jwtService.generarRefreshToken(usuario);
+        UserDetails userDetails = userDetailsService.loadUserByUsername(usuario.getUsername());
+        String resolvedRole = userDetails.getAuthorities().stream()
+                .findFirst()
+                .map(a -> a.getAuthority())
+                .orElse(Usuario.Role.ROLE_VIEWER.name());
+        String accessToken = jwtService.generarAccessToken(userDetails);
+        String refreshToken = jwtService.generarRefreshToken(userDetails);
         AuthResponse authResponse = new AuthResponse(
                 accessToken,
                 usuario.getUsername(),
-                usuario.getRole().name(),
+                resolvedRole,
                 jwtService.getAccessExpirationMs(),
                 Boolean.TRUE.equals(usuario.getMustChangePassword())
         );

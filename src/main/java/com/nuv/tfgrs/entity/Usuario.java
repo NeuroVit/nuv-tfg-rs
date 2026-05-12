@@ -1,5 +1,6 @@
 package com.nuv.tfgrs.entity;
  
+import com.nuv.tfgrs.security.TokenVersionAware;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,7 +20,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Usuario implements UserDetails {
+public class Usuario implements UserDetails, TokenVersionAware {
  
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
