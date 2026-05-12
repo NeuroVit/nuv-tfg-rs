@@ -83,6 +83,7 @@ public class CategoriaServiceImpl implements CategoriaService {
         Categoria categoria = buscarEntidadPorId(id, organizationId);
         try {
             categoriaRepository.delete(categoria);
+            categoriaRepository.flush();
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -123,3 +124,4 @@ public class CategoriaServiceImpl implements CategoriaService {
         return limpia.isEmpty() ? null : limpia;
     }
 }
+
