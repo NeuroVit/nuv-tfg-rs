@@ -57,7 +57,7 @@ google:
     allowed-deep-link-prefixes: ${GOOGLE_MOBILE_ALLOWED_DEEP_LINK_PREFIXES:neurovit://}
 
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost,tauri://localhost,http://tauri.localhost,https://tauri.localhost,https://web-production-b34f68.up.railway.app}
 
 auth:
   debug:

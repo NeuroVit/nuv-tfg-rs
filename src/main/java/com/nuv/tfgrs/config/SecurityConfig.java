@@ -2,7 +2,9 @@ package com.nuv.tfgrs.config;
 
 import com.nuv.tfgrs.security.JwtAuthFilter;
 import com.nuv.tfgrs.security.AuthRateLimitFilter;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +30,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+@Slf4j
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -40,6 +43,15 @@ public class SecurityConfig {
 
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
+
+    @PostConstruct
+    void logResolvedCorsOrigins() {
+        log.info(
+                "CORS allowed origins resolved: origins={}, patterns={}",
+                resolveAllowedOrigins(),
+                resolveAllowedOriginPatterns()
+        );
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -82,6 +94,7 @@ public class SecurityConfig {
                 "X-Requested-With",
                 "ngrok-skip-browser-warning"
         ));
+        config.setExposedHeaders(List.of("Content-Disposition", "X-Rate-Limit-Remaining"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
@@ -107,13 +120,10 @@ public class SecurityConfig {
     }
 
     private List<String> resolveAllowedOriginPatterns() {
-        // Some iOS WebView/Tauri flows can surface non-standard or null-like origins.
-        // Keep explicit CORS origins as primary control, and use targeted patterns as fallback.
         return List.of(
                 "tauri://*",
                 "http://tauri.localhost",
-                "https://tauri.localhost",
-                "null"
+                "https://tauri.localhost"
         );
     }
 
