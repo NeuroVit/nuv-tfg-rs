@@ -11,6 +11,7 @@ import com.nuv.tfgrs.dto.response.AuthTokens;
 import com.nuv.tfgrs.dto.response.UserProfileResponse;
 import com.nuv.tfgrs.service.AuthService;
 import com.nuv.tfgrs.service.OrganizationService;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -35,6 +36,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,6 +61,9 @@ public class AuthController {
     @Value("${jwt.refresh-cookie-secure:false}")
     private boolean refreshCookieSecure;
 
+    @Value("${jwt.refresh-cookie-samesite:Lax}")
+    private String refreshCookieSameSite;
+
     @Value("${jwt.refresh-expiration-ms:604800000}")
     private long refreshExpirationMs;
 
@@ -76,6 +81,14 @@ public class AuthController {
 
     @Value("${google.mobile.allowed-deep-link-prefixes:neurovit://}")
     private String googleMobileAllowedDeepLinkPrefixes;
+
+    @PostConstruct
+    void validateRefreshCookieConfig() {
+        String sameSite = resolveRefreshCookieSameSite();
+        if ("None".equals(sameSite) && !refreshCookieSecure) {
+            throw new IllegalStateException("JWT refresh cookie requires JWT_REFRESH_COOKIE_SECURE=true when JWT_REFRESH_COOKIE_SAMESITE=None.");
+        }
+    }
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> registrar(
@@ -323,7 +336,7 @@ public class AuthController {
         ResponseCookie cookie = ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, refreshToken)
                 .httpOnly(true)
                 .secure(refreshCookieSecure)
-                .sameSite("Lax")
+                .sameSite(resolveRefreshCookieSameSite())
                 .path("/api/auth")
                 .maxAge(maxAgeSeconds)
                 .build();
@@ -334,11 +347,23 @@ public class AuthController {
         ResponseCookie cookie = ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, "")
                 .httpOnly(true)
                 .secure(refreshCookieSecure)
-                .sameSite("Lax")
+                .sameSite(resolveRefreshCookieSameSite())
                 .path("/api/auth")
                 .maxAge(0)
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
+
+    private String resolveRefreshCookieSameSite() {
+        String normalized = refreshCookieSameSite == null ? "" : refreshCookieSameSite.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "lax" -> "Lax";
+            case "strict" -> "Strict";
+            case "none" -> "None";
+            default -> throw new IllegalStateException(
+                    "JWT_REFRESH_COOKIE_SAMESITE must be one of: Lax, Strict, None."
+            );
+        };
     }
 
     private String resolveDeepLink(String deeplink) {
