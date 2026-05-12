@@ -26,6 +26,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final UserDetailsService userDetailsService;
 
     @Value("${google.client-id:}")
     private String googleClientId;
@@ -66,7 +69,7 @@ public class AuthServiceImpl implements AuthService {
     @Value("${auth.debug.google:false}")
     private boolean googleDebugEnabled;
 
-    @Value("${auth.role-switch.enabled:true}")
+    @Value("${auth.role-switch.enabled:false}")
     private boolean roleSwitchEnabled;
 
     @Override
@@ -219,6 +222,10 @@ public class AuthServiceImpl implements AuthService {
             Usuario usuario = usuarioRepository.findByUsername(username)
                     .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR));
 
+            if (!usuario.isEnabled()) {
+                throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR);
+            }
+
             if (!jwtService.esRefreshTokenValido(refreshToken, usuario)) {
                 throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR);
             }
@@ -252,6 +259,7 @@ public class AuthServiceImpl implements AuthService {
         Role nuevoRol = parseRole(role);
         Role oldRole = usuario.getRole();
         usuario.setRole(nuevoRol);
+        bumpTokenVersion(usuario);
         usuario.setUpdatedAt(LocalDateTime.now());
         Usuario saved = usuarioRepository.save(usuario);
         recordRoleChange(saved.getId(), saved.getId(), oldRole, nuevoRol, "SELF_SWITCH");
@@ -311,6 +319,17 @@ public class AuthServiceImpl implements AuthService {
 
         usuario.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         usuario.setMustChangePassword(false);
+        bumpTokenVersion(usuario);
+        usuario.setUpdatedAt(LocalDateTime.now());
+        usuarioRepository.save(usuario);
+    }
+
+    @Override
+    @Transactional
+    public void revocarTokensUsuarioActual(String username) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+        bumpTokenVersion(usuario);
         usuario.setUpdatedAt(LocalDateTime.now());
         usuarioRepository.save(usuario);
     }
@@ -329,13 +348,23 @@ public class AuthServiceImpl implements AuthService {
         );
     }
 
+    private void bumpTokenVersion(Usuario usuario) {
+        int current = usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion();
+        usuario.setTokenVersion(current + 1);
+    }
+
     private AuthTokens buildAuthTokens(Usuario usuario) {
-        String accessToken = jwtService.generarAccessToken(usuario);
-        String refreshToken = jwtService.generarRefreshToken(usuario);
+        UserDetails userDetails = userDetailsService.loadUserByUsername(usuario.getUsername());
+        String resolvedRole = userDetails.getAuthorities().stream()
+                .findFirst()
+                .map(a -> a.getAuthority())
+                .orElse(Usuario.Role.ROLE_VIEWER.name());
+        String accessToken = jwtService.generarAccessToken(userDetails);
+        String refreshToken = jwtService.generarRefreshToken(userDetails);
         AuthResponse authResponse = new AuthResponse(
                 accessToken,
                 usuario.getUsername(),
-                usuario.getRole().name(),
+                resolvedRole,
                 jwtService.getAccessExpirationMs(),
                 Boolean.TRUE.equals(usuario.getMustChangePassword())
         );

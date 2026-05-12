@@ -1,5 +1,6 @@
 package com.nuv.tfgrs.entity;
  
+import com.nuv.tfgrs.security.TokenVersionAware;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,7 +20,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Usuario implements UserDetails {
+public class Usuario implements UserDetails, TokenVersionAware {
  
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -62,6 +63,9 @@ public class Usuario implements UserDetails {
     @Column(name = "must_change_password", nullable = false)
     private Boolean mustChangePassword;
 
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion;
+
     // Also make password nullable:
     //@Column(nullable = true)
     //private String password;
@@ -75,6 +79,9 @@ public class Usuario implements UserDetails {
         }
         if (mustChangePassword == null) {
             mustChangePassword = false;
+        }
+        if (tokenVersion == null) {
+            tokenVersion = 0;
         }
     }
  
