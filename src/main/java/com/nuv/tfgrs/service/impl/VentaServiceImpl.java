@@ -12,8 +12,10 @@ import com.nuv.tfgrs.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.repository.UsuarioRepository;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
+import com.nuv.tfgrs.service.VentaEmailService;
 import com.nuv.tfgrs.service.VentaService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -36,6 +38,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class VentaServiceImpl implements VentaService {
 
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
@@ -47,6 +50,7 @@ public class VentaServiceImpl implements VentaService {
     private final UsuarioRepository usuarioRepository;
     private final StockAlertManager stockAlertManager;
     private final CurrentOrganizationResolver currentOrganizationResolver;
+    private final VentaEmailService ventaEmailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -168,7 +172,15 @@ public class VentaServiceImpl implements VentaService {
         insertSaleItems(saleId, saleItemsToInsert, organizationId);
         updateStockAndCreateMovements(saleId, saleByProduct, productsById, organizationId);
 
-        return fetchSaleById(saleId, organizationId);
+        VentaResponse response = fetchSaleById(saleId, organizationId);
+        clienteRepository.findByIdAndOrganizationId(request.clientId(), organizationId).ifPresent(cliente -> {
+            try {
+                ventaEmailService.enviarComprobanteVenta(response, cliente);
+            } catch (Exception ex) {
+                log.warn("No se pudo enviar comprobante de venta #{} al cliente {}", saleId, cliente.getId(), ex);
+            }
+        });
+        return response;
     }
 
     private Map<Long, ProductSaleAccumulator> aggregateCandidates(
