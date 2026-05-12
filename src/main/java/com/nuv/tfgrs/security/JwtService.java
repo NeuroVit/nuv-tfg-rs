@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -32,6 +33,19 @@ public class JwtService {
 
     @Value("${jwt.refresh-expiration-ms}")
     private long refreshExpirationMs;
+
+    @PostConstruct
+    void validateSecretLength() {
+        if (secret == null) {
+            throw new IllegalStateException("JWT_SECRET is required and must be at least 32 UTF-8 bytes.");
+        }
+        int secretLength = secret.getBytes(StandardCharsets.UTF_8).length;
+        if (secretLength < 32) {
+            throw new IllegalStateException(
+                    "JWT_SECRET must be at least 32 UTF-8 bytes, but found " + secretLength + "."
+            );
+        }
+    }
 
     public String generarToken(UserDetails userDetails) {
         return generarAccessToken(userDetails);
