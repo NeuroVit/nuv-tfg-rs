@@ -16,16 +16,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Tag("sales-verification")
-@WithMockUser(username = "manager", roles = {"MANAGER"})
+@WithMockUser(username = "nova_manager", roles = {"MANAGER"})
 class AnaliticaApiIntegrationTest extends SalesIntegrationTestBase {
 
     @Test
     void bundlesPerformance_shouldReturnRowsWhenSaleHasBundleAttribution() throws Exception {
         Long clientId = insertClient(true);
+        long bundleId = bundleIdWithMinComponentStock(1);
         Map<String, Object> payload = salePayload(
                 clientId,
                 List.of(),
-                List.of(bundleItem(1L, 1, new BigDecimal("5.00"))),
+                List.of(bundleItem(bundleId, 1, new BigDecimal("5.00"))),
                 null,
                 "analytics-bundle-performance"
         );
@@ -44,9 +45,10 @@ class AnaliticaApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void clientesRentabilidad_shouldReturnRows() throws Exception {
         Long clientId = insertClient(true);
+        long productId = productIdWithMinStock(1);
         Map<String, Object> payload = salePayload(
                 clientId,
-                List.of(directItem(1L, 1, null)),
+                List.of(directItem(productId, 1, null)),
                 List.of(),
                 null,
                 "analytics-cliente-rentabilidad"

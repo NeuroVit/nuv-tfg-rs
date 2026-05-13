@@ -15,13 +15,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Tag("sales-verification")
-@WithMockUser(username = "manager", roles = {"MANAGER"})
+@WithMockUser(username = "nova_manager", roles = {"MANAGER"})
 class VentasApiIntegrationTest extends SalesIntegrationTestBase {
 
     @Test
     void createSale_withDirectItems_shouldPersistAndUpdateStock() throws Exception {
         Long clientId = insertClient(true);
-        long productId = 1L;
+        long productId = productIdWithMinStock(2);
 
         Map<String, Object> payload = salePayload(
                 clientId,
@@ -42,11 +42,12 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withBundleOnly_shouldApplyDefaultBundleDiscount() throws Exception {
         Long clientId = insertClient(true);
+        long bundleId = bundleIdWithMinComponentStock(1);
 
         Map<String, Object> payload = salePayload(
                 clientId,
                 List.of(),
-                List.of(bundleItem(1L, 1, null)),
+                List.of(bundleItem(bundleId, 1, null)),
                 null,
                 "bundle-default-discount"
         );
@@ -62,11 +63,12 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withBundleOnly_shouldPersistAndReturnBundleId() throws Exception {
         Long clientId = insertClient(true);
+        long bundleId = bundleIdWithMinComponentStock(1);
 
         Map<String, Object> payload = salePayload(
                 clientId,
                 List.of(),
-                List.of(bundleItem(1L, 1, null)),
+                List.of(bundleItem(bundleId, 1, null)),
                 null,
                 "bundle-id-roundtrip"
         );
@@ -92,7 +94,7 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withPerLineDiscount_shouldPersistDiscountSnapshots() throws Exception {
         Long clientId = insertClient(true);
-        long productId = 7L;
+        long productId = productIdWithMinStock(3);
 
         Map<String, Object> payload = salePayload(
                 clientId,
@@ -113,7 +115,7 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withGlobalDiscount_shouldPersistGlobalAndNetTotals() throws Exception {
         Long clientId = insertClient(true);
-        long productId = 9L;
+        long productId = productIdWithMinStock(4);
 
         Map<String, Object> payload = salePayload(
                 clientId,
@@ -134,11 +136,13 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withMixedDirectAndBundles_shouldAggregateAndPersistCorrectly() throws Exception {
         Long clientId = insertClient(true);
+        long bundleId = bundleIdWithMinComponentStock(1);
+        long directProductId = productIdWithMinStockExcluding(2, productIdsInBundle(bundleId));
 
         Map<String, Object> payload = salePayload(
                 clientId,
-                List.of(directItem(25L, 2, new BigDecimal("5.00"))),
-                List.of(bundleItem(2L, 1, null)),
+                List.of(directItem(directProductId, 2, new BigDecimal("5.00"))),
+                List.of(bundleItem(bundleId, 1, null)),
                 new BigDecimal("3.00"),
                 "mixed-sale"
         );
@@ -154,10 +158,12 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withInsufficientStock_shouldReturnConflict() throws Exception {
         Long clientId = insertClient(true);
+        long productId = productIdWithMinStock(1);
+        int excessiveQuantity = Math.toIntExact(currentStock(productId) + 1L);
 
         Map<String, Object> payload = salePayload(
                 clientId,
-                List.of(directItem(17L, 9999, null)),
+                List.of(directItem(productId, excessiveQuantity, null)),
                 List.of(),
                 null,
                 "insufficient-stock"
@@ -169,10 +175,11 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withInactiveClient_shouldReturnBadRequest() throws Exception {
         Long inactiveClientId = insertClient(false);
+        long productId = productIdWithMinStock(1);
 
         Map<String, Object> payload = salePayload(
                 inactiveClientId,
-                List.of(directItem(1L, 1, null)),
+                List.of(directItem(productId, 1, null)),
                 List.of(),
                 null,
                 "inactive-client"
@@ -184,12 +191,13 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withDuplicateDirectProduct_shouldReturnBadRequest() throws Exception {
         Long clientId = insertClient(true);
+        long productId = productIdWithMinStock(1);
 
         Map<String, Object> payload = salePayload(
                 clientId,
                 List.of(
-                        directItem(1L, 1, null),
-                        directItem(1L, 2, null)
+                        directItem(productId, 1, null),
+                        directItem(productId, 2, null)
                 ),
                 List.of(),
                 null,
@@ -202,13 +210,14 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void createSale_withDuplicateBundle_shouldReturnBadRequest() throws Exception {
         Long clientId = insertClient(true);
+        long bundleId = bundleIdWithMinComponentStock(1);
 
         Map<String, Object> payload = salePayload(
                 clientId,
                 List.of(),
                 List.of(
-                        bundleItem(1L, 1, null),
-                        bundleItem(1L, 2, null)
+                        bundleItem(bundleId, 1, null),
+                        bundleItem(bundleId, 2, null)
                 ),
                 null,
                 "duplicate-bundle"
@@ -220,11 +229,13 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     @Test
     void analyticsRegression_afterSale_shouldExposeMarginFieldsAndSnapshotInputs() throws Exception {
         Long clientId = insertClient(true);
+        long bundleId = bundleIdWithMinComponentStock(1);
+        long directProductId = productIdWithMinStockExcluding(2, productIdsInBundle(bundleId));
 
         Map<String, Object> payload = salePayload(
                 clientId,
-                List.of(directItem(7L, 2, new BigDecimal("11.00"))),
-                List.of(bundleItem(1L, 1, new BigDecimal("9.00"))),
+                List.of(directItem(directProductId, 2, new BigDecimal("11.00"))),
+                List.of(bundleItem(bundleId, 1, new BigDecimal("9.00"))),
                 new BigDecimal("4.00"),
                 "analytics-regression"
         );
