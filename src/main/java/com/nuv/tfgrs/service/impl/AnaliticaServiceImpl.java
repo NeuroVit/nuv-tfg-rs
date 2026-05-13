@@ -16,6 +16,7 @@ import com.nuv.tfgrs.dto.response.StockReceiptRowResponse;
 import com.nuv.tfgrs.dto.response.TopProductoVelocidadRowResponse;
 import com.nuv.tfgrs.dto.response.VelocidadResumenRowResponse;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
+import com.nuv.tfgrs.security.user.CurrentUserResolver;
 import com.nuv.tfgrs.service.AnaliticaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,8 +29,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -46,6 +49,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     private static final String ANALYTICS_SEED_KEY = "analytics_seed_v3";
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final CurrentOrganizationResolver currentOrganizationResolver;
+    private final CurrentUserResolver currentUserResolver;
     @Value("${analytics.seed.enabled:false}")
     private boolean analyticsSeedEnabled;
 
@@ -79,22 +83,34 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<SalesVelocityRowResponse> velocidadVentas(int limit, Integer days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        String userTimeZone = zone.getId();
         int safeLimit = Math.max(1, Math.min(limit, 200));
         Integer safeDays = normalizeDays(days);
         String sqlBase = """
-                SELECT v.product_id, v.sku, v.product_name, v.category_name, v.movement_date, v.units_sold, v.revenue
-                FROM v_sales_velocity v
-                JOIN products p ON p.id = v.product_id
-                WHERE p.organization_id = :organizationId
+                SELECT
+                    p.id AS product_id,
+                    p.sku,
+                    p.name AS product_name,
+                    c.name AS category_name,
+                    DATE(CONVERT_TZ(s.sold_at, '+00:00', :userTz)) AS movement_date,
+                    SUM(si.quantity) AS units_sold,
+                    ROUND(SUM(si.quantity * si.unit_price_snapshot), 2) AS revenue
+                FROM sales s
+                JOIN sale_items si ON si.sale_id = s.id
+                JOIN products p ON p.id = si.product_id
+                JOIN categories c ON c.id = p.category_id
+                WHERE s.organization_id = :organizationId
                 """;
         String sql = safeDays == null
-                ? sqlBase + "\nORDER BY v.movement_date DESC, v.revenue DESC\nLIMIT :limit"
-                : sqlBase + "\nAND v.movement_date >= :dateFrom\nORDER BY v.movement_date DESC, v.revenue DESC\nLIMIT :limit";
+                ? sqlBase + "\nGROUP BY p.id, p.sku, p.name, c.name, DATE(CONVERT_TZ(s.sold_at, '+00:00', :userTz))\nORDER BY movement_date DESC, revenue DESC\nLIMIT :limit"
+                : sqlBase + "\nAND s.sold_at >= :dateFrom\nGROUP BY p.id, p.sku, p.name, c.name, DATE(CONVERT_TZ(s.sold_at, '+00:00', :userTz))\nORDER BY movement_date DESC, revenue DESC\nLIMIT :limit";
 
         MapSqlParameterSource params = new MapSqlParameterSource("limit", safeLimit)
-                .addValue("organizationId", organizationId);
+                .addValue("organizationId", organizationId)
+                .addValue("userTz", userTimeZone);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) ->
@@ -114,6 +130,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<PriceTrendRowResponse> tendenciasPrecios(int limit, Integer days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
         int safeLimit = Math.max(1, Math.min(limit, 200));
         Integer safeDays = normalizeDays(days);
         String sqlBase = """
@@ -130,7 +147,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         MapSqlParameterSource params = new MapSqlParameterSource("limit", safeLimit)
                 .addValue("organizationId", organizationId);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays).atStartOfDay());
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) ->
@@ -154,6 +171,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<BundleCandidateRowResponse> candidatosBundle(int limit, Integer days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
         int safeLimit = Math.max(1, Math.min(limit, 200));
         Integer safeDays = normalizeDays(days);
         String sqlBase = """
@@ -199,7 +217,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         MapSqlParameterSource params = new MapSqlParameterSource("limit", safeLimit)
                 .addValue("organizationId", organizationId);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays).atStartOfDay());
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) ->
@@ -222,29 +240,38 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<VelocidadResumenRowResponse> velocidadResumen(int days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        String userTimeZone = zone.getId();
         Integer safeDays = normalizeDays(days);
         String sqlBase = """
-                SELECT v.movement_date, SUM(v.units_sold) AS units_sold, SUM(v.revenue) AS revenue
-                FROM v_sales_velocity v
-                JOIN products p ON p.id = v.product_id
-                WHERE p.organization_id = :organizationId
-                GROUP BY v.movement_date
-                ORDER BY v.movement_date
+                SELECT
+                    DATE(CONVERT_TZ(s.sold_at, '+00:00', :userTz)) AS movement_date,
+                    SUM(si.quantity) AS units_sold,
+                    ROUND(SUM(si.quantity * si.unit_price_snapshot), 2) AS revenue
+                FROM sales s
+                JOIN sale_items si ON si.sale_id = s.id
+                WHERE s.organization_id = :organizationId
+                GROUP BY DATE(CONVERT_TZ(s.sold_at, '+00:00', :userTz))
+                ORDER BY movement_date
                 """;
         String sql = safeDays == null
                 ? sqlBase
                 : """
-                SELECT v.movement_date, SUM(v.units_sold) AS units_sold, SUM(v.revenue) AS revenue
-                FROM v_sales_velocity v
-                JOIN products p ON p.id = v.product_id
-                WHERE p.organization_id = :organizationId
-                  AND v.movement_date >= :dateFrom
-                GROUP BY v.movement_date
-                ORDER BY v.movement_date
+                SELECT
+                    DATE(CONVERT_TZ(s.sold_at, '+00:00', :userTz)) AS movement_date,
+                    SUM(si.quantity) AS units_sold,
+                    ROUND(SUM(si.quantity * si.unit_price_snapshot), 2) AS revenue
+                FROM sales s
+                JOIN sale_items si ON si.sale_id = s.id
+                WHERE s.organization_id = :organizationId
+                  AND s.sold_at >= :dateFrom
+                GROUP BY DATE(CONVERT_TZ(s.sold_at, '+00:00', :userTz))
+                ORDER BY movement_date
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId)
+                .addValue("userTz", userTimeZone);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(
@@ -262,28 +289,33 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<TopProductoVelocidadRowResponse> topProductosVelocidad(int days, int limit) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
         Integer safeDays = normalizeDays(days);
         int safeLimit = Math.max(3, Math.min(limit, 20));
         String sqlBase = """
-                SELECT v.product_id, v.sku, v.product_name, v.category_name,
-                       SUM(v.units_sold) AS units_sold,
-                       SUM(v.revenue) AS revenue
-                FROM v_sales_velocity v
-                JOIN products p ON p.id = v.product_id
-                WHERE p.organization_id = :organizationId
-                GROUP BY v.product_id, v.sku, v.product_name, v.category_name
+                SELECT p.id AS product_id, p.sku, p.name AS product_name, c.name AS category_name,
+                       SUM(si.quantity) AS units_sold,
+                       ROUND(SUM(si.quantity * si.unit_price_snapshot), 2) AS revenue
+                FROM sales s
+                JOIN sale_items si ON si.sale_id = s.id
+                JOIN products p ON p.id = si.product_id
+                JOIN categories c ON c.id = p.category_id
+                WHERE s.organization_id = :organizationId
+                GROUP BY p.id, p.sku, p.name, c.name
                 """;
         String sql = safeDays == null
                 ? sqlBase + "\nORDER BY units_sold DESC, revenue DESC\nLIMIT :limit"
                 : """
-                SELECT v.product_id, v.sku, v.product_name, v.category_name,
-                       SUM(v.units_sold) AS units_sold,
-                       SUM(v.revenue) AS revenue
-                FROM v_sales_velocity v
-                JOIN products p ON p.id = v.product_id
-                WHERE p.organization_id = :organizationId
-                  AND v.movement_date >= :dateFrom
-                GROUP BY v.product_id, v.sku, v.product_name, v.category_name
+                SELECT p.id AS product_id, p.sku, p.name AS product_name, c.name AS category_name,
+                       SUM(si.quantity) AS units_sold,
+                       ROUND(SUM(si.quantity * si.unit_price_snapshot), 2) AS revenue
+                FROM sales s
+                JOIN sale_items si ON si.sale_id = s.id
+                JOIN products p ON p.id = si.product_id
+                JOIN categories c ON c.id = p.category_id
+                WHERE s.organization_id = :organizationId
+                  AND s.sold_at >= :dateFrom
+                GROUP BY p.id, p.sku, p.name, c.name
                 ORDER BY units_sold DESC, revenue DESC
                 LIMIT :limit
                 """;
@@ -291,7 +323,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("limit", safeLimit)
                 .addValue("organizationId", organizationId);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(
@@ -362,10 +394,11 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public FinanzasResumenResponse finanzasResumen(int days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
         Integer safeDays = normalizeDays(days);
         MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         String ventasSqlBase = """
@@ -489,8 +522,9 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public RevenueComparativaResponse revenueComparativa(int days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
-        LocalDateTime now = LocalDateTime.now();
-        RevenueTimelineSpec spec = resolveRevenueTimelineSpec(organizationId, days, now);
+        ZoneId zone = resolveUserZone();
+        LocalDateTime now = LocalDateTime.now(zone);
+        RevenueTimelineSpec spec = resolveRevenueTimelineSpec(organizationId, days, now, zone);
         if (spec.bucketCount() <= 0) {
             return new RevenueComparativaResponse(spec.currentLabel(), spec.previousLabel(), spec.granularity().name(), List.of());
         }
@@ -510,10 +544,10 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         List<SaleRevenuePoint> points = jdbcTemplate.query(
                 sql,
                 new MapSqlParameterSource("organizationId", organizationId)
-                        .addValue("fromDate", queryFrom)
-                        .addValue("toDate", spec.currentEnd()),
+                        .addValue("fromDate", Timestamp.from(queryFrom.atZone(zone).toInstant()))
+                        .addValue("toDate", Timestamp.from(spec.currentEnd().atZone(zone).toInstant())),
                 (rs, rowNum) -> new SaleRevenuePoint(
-                        rs.getTimestamp("sold_at").toLocalDateTime(),
+                        rs.getTimestamp("sold_at").toInstant().atZone(zone).toLocalDateTime(),
                         asBigDecimal(rs.getBigDecimal("total_amount"))
                 )
         );
@@ -562,6 +596,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<RentabilidadProductoRowResponse> rentabilidadProductos(int days, int limit) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
         Integer safeDays = normalizeDays(days);
         int safeLimit = Math.max(5, Math.min(limit, 50));
 
@@ -629,7 +664,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
                 .addValue("limit", safeLimit)
                 .addValue("organizationId", organizationId);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> new RentabilidadProductoRowResponse(
@@ -649,19 +684,23 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<ProductCreationRowResponse> productosCreadosTimeline(int days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        String userTimeZone = zone.getId();
         Integer safeDays = normalizeDays(days);
         String sqlBase = """
-                SELECT v.creation_date, v.products_created
-                FROM v_product_creation_timeline v
-                WHERE v.organization_id = :organizationId
+                SELECT DATE(CONVERT_TZ(p.created_at, '+00:00', :userTz)) AS creation_date,
+                       COUNT(*) AS products_created
+                FROM products p
+                WHERE p.organization_id = :organizationId
                 """;
         String sql = safeDays == null
-                ? sqlBase + "\nORDER BY v.creation_date"
-                : sqlBase + "\n  AND v.creation_date >= :dateFrom\nORDER BY v.creation_date";
+                ? sqlBase + "\nGROUP BY DATE(CONVERT_TZ(p.created_at, '+00:00', :userTz))\nORDER BY creation_date"
+                : sqlBase + "\n  AND p.created_at >= :dateFrom\nGROUP BY DATE(CONVERT_TZ(p.created_at, '+00:00', :userTz))\nORDER BY creation_date";
 
-        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId)
+                .addValue("userTz", userTimeZone);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> new ProductCreationRowResponse(
@@ -674,19 +713,26 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public List<StockReceiptRowResponse> stockRecibidoTimeline(int days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        String userTimeZone = zone.getId();
         Integer safeDays = normalizeDays(days);
         String sqlBase = """
-                SELECT v.receipt_date, v.units_received, v.value_received
-                FROM v_stock_receipts_timeline v
-                WHERE v.organization_id = :organizationId
+                SELECT DATE(CONVERT_TZ(sm.moved_at, '+00:00', :userTz)) AS receipt_date,
+                       COALESCE(SUM(sm.delta), 0) AS units_received,
+                       ROUND(COALESCE(SUM(sm.delta * COALESCE(p.acquisition_price, p.unit_price)), 0), 2) AS value_received
+                FROM stock_movements sm
+                JOIN products p ON p.id = sm.product_id
+                WHERE sm.organization_id = :organizationId
+                  AND sm.reason = 'PURCHASE'
                 """;
         String sql = safeDays == null
-                ? sqlBase + "\nORDER BY v.receipt_date"
-                : sqlBase + "\n  AND v.receipt_date >= :dateFrom\nORDER BY v.receipt_date";
+                ? sqlBase + "\nGROUP BY DATE(CONVERT_TZ(sm.moved_at, '+00:00', :userTz))\nORDER BY receipt_date"
+                : sqlBase + "\n  AND sm.moved_at >= :dateFrom\nGROUP BY DATE(CONVERT_TZ(sm.moved_at, '+00:00', :userTz))\nORDER BY receipt_date";
 
-        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId)
+                .addValue("userTz", userTimeZone);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> new StockReceiptRowResponse(
@@ -700,11 +746,12 @@ public class AnaliticaServiceImpl implements AnaliticaService {
     @Transactional(readOnly = true)
     public AnaliticaMetaResponse metadata(int days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
         Integer safeDays = normalizeDays(days);
         int resolvedWindowDays = safeDays == null ? 0 : safeDays;
         MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
         if (safeDays != null) {
-            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
         }
 
         String salesSql = safeDays == null
@@ -724,7 +771,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         LocalDateTime generatedAt = Stream.of(latestSales, latestPurchases, latestPriceChange)
                 .filter(Objects::nonNull)
                 .max(LocalDateTime::compareTo)
-                .orElse(LocalDateTime.now());
+                .orElse(LocalDateTime.now(zone));
 
         boolean seedApplied = isAnalyticsSeedApplied();
         String source = analyticsSeedEnabled
@@ -734,7 +781,7 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         return new AnaliticaMetaResponse(source, analyticsSeedEnabled, generatedAt, resolvedWindowDays);
     }
 
-    private RevenueTimelineSpec resolveRevenueTimelineSpec(Long organizationId, int days, LocalDateTime now) {
+    private RevenueTimelineSpec resolveRevenueTimelineSpec(Long organizationId, int days, LocalDateTime now, ZoneId zone) {
         if (days == 1) {
             LocalDateTime start = now.toLocalDate().atStartOfDay();
             return new RevenueTimelineSpec(
@@ -809,8 +856,8 @@ public class AnaliticaServiceImpl implements AnaliticaService {
                         """,
                 new MapSqlParameterSource("organizationId", organizationId)
         );
-        LocalDateTime minSoldAt = asLocalDateTime(minRow.get("min_sold_at"));
-        if (minSoldAt == null) {
+        LocalDateTime minSoldAtUtc = asLocalDateTime(minRow.get("min_sold_at"));
+        if (minSoldAtUtc == null) {
             return new RevenueTimelineSpec(
                     RevenueGranularity.DAY,
                     now.toLocalDate().atStartOfDay(),
@@ -819,8 +866,9 @@ public class AnaliticaServiceImpl implements AnaliticaService {
                     0,
                     "Histórico",
                     "Mismo periodo año anterior"
-            );
+                );
         }
+        LocalDateTime minSoldAt = minSoldAtUtc.atZone(ZoneId.of("UTC")).withZoneSameInstant(zone).toLocalDateTime();
 
         long spanDays = Math.max(0L, ChronoUnit.DAYS.between(minSoldAt.toLocalDate(), now.toLocalDate()));
         RevenueGranularity granularity = spanDays >= 730
@@ -952,6 +1000,15 @@ public class AnaliticaServiceImpl implements AnaliticaService {
         if (value instanceof Timestamp timestamp) return timestamp.toLocalDateTime();
         if (value instanceof java.sql.Date date) return date.toLocalDate().atStartOfDay();
         return null;
+    }
+
+    private ZoneId resolveUserZone() {
+        return ZoneId.of(currentUserResolver.requireUser().timeZone());
+    }
+
+    private Timestamp toUtcStartOfDayTimestamp(ZoneId zone, int daysBack) {
+        Instant instant = LocalDate.now(zone).minusDays(daysBack).atStartOfDay(zone).toInstant();
+        return Timestamp.from(instant);
     }
 
     private boolean isAnalyticsSeedApplied() {

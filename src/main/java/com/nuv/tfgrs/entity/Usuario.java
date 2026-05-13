@@ -11,6 +11,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
  
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
  
@@ -21,6 +22,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Usuario implements UserDetails, TokenVersionAware {
+
+    public static final String DEFAULT_TIME_ZONE = "Europe/Madrid";
  
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -66,14 +69,17 @@ public class Usuario implements UserDetails, TokenVersionAware {
     @Column(name = "token_version", nullable = false)
     private Integer tokenVersion;
 
+    @Column(name = "time_zone", nullable = false, length = 64)
+    private String timeZone;
+
     // Also make password nullable:
     //@Column(nullable = true)
     //private String password;
  
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
         if (active == null) {
             active = true;
         }
@@ -83,11 +89,14 @@ public class Usuario implements UserDetails, TokenVersionAware {
         if (tokenVersion == null) {
             tokenVersion = 0;
         }
+        if (timeZone == null || timeZone.isBlank()) {
+            timeZone = DEFAULT_TIME_ZONE;
+        }
     }
  
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
  
     // --- UserDetails implementation ---

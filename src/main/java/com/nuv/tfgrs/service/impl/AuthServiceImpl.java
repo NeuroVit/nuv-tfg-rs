@@ -33,7 +33,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.time.DateTimeException;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -52,6 +55,7 @@ public class AuthServiceImpl implements AuthService {
     private static final String GENERIC_LOGIN_ERROR = "Credenciales inválidas";
     private static final String GENERIC_GOOGLE_ERROR = "No se pudo completar el inicio de sesión con Google";
     private static final String GENERIC_REFRESH_ERROR = "No se pudo renovar la sesión";
+    private static final String DEFAULT_TIME_ZONE = Usuario.DEFAULT_TIME_ZONE;
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
@@ -89,8 +93,9 @@ public class AuthServiceImpl implements AuthService {
                 .role(Usuario.Role.ROLE_VIEWER)
                 .active(true)
                 .mustChangePassword(false)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .timeZone(DEFAULT_TIME_ZONE)
+                .createdAt(LocalDateTime.now(ZoneOffset.UTC))
+                .updatedAt(LocalDateTime.now(ZoneOffset.UTC))
                 .build();
 
         try {
@@ -182,8 +187,9 @@ public class AuthServiceImpl implements AuthService {
                         nuevo.setRole(Role.ROLE_VIEWER);
                         nuevo.setActive(true);
                         nuevo.setMustChangePassword(false);
-                        nuevo.setCreatedAt(LocalDateTime.now());
-                        nuevo.setUpdatedAt(LocalDateTime.now());
+                        nuevo.setTimeZone(DEFAULT_TIME_ZONE);
+                        nuevo.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
+                        nuevo.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
                         return nuevo;
                     });
 
@@ -260,7 +266,7 @@ public class AuthServiceImpl implements AuthService {
         Role oldRole = usuario.getRole();
         usuario.setRole(nuevoRol);
         bumpTokenVersion(usuario);
-        usuario.setUpdatedAt(LocalDateTime.now());
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
         Usuario saved = usuarioRepository.save(usuario);
         recordRoleChange(saved.getId(), saved.getId(), oldRole, nuevoRol, "SELF_SWITCH");
 
@@ -293,7 +299,16 @@ public class AuthServiceImpl implements AuthService {
         usuario.setNombre(request.nombre().trim());
         usuario.setApellidos(request.apellidos().trim());
         usuario.setEmail(normalizedEmail);
-        usuario.setUpdatedAt(LocalDateTime.now());
+        if (request.timeZone() != null) {
+            String normalizedTimeZone = request.timeZone().trim();
+            try {
+                ZoneId.of(normalizedTimeZone);
+            } catch (DateTimeException ex) {
+                throw new AuthException(HttpStatus.BAD_REQUEST, "Zona horaria inválida");
+            }
+            usuario.setTimeZone(normalizedTimeZone);
+        }
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
 
         Usuario saved = usuarioRepository.save(usuario);
         return UserProfileResponse.from(saved);
@@ -320,7 +335,7 @@ public class AuthServiceImpl implements AuthService {
         usuario.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         usuario.setMustChangePassword(false);
         bumpTokenVersion(usuario);
-        usuario.setUpdatedAt(LocalDateTime.now());
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
         usuarioRepository.save(usuario);
     }
 
@@ -330,7 +345,7 @@ public class AuthServiceImpl implements AuthService {
         Usuario usuario = usuarioRepository.findByUsername(username)
                 .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
         bumpTokenVersion(usuario);
-        usuario.setUpdatedAt(LocalDateTime.now());
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
         usuarioRepository.save(usuario);
     }
 
@@ -366,7 +381,8 @@ public class AuthServiceImpl implements AuthService {
                 usuario.getUsername(),
                 resolvedRole,
                 jwtService.getAccessExpirationMs(),
-                Boolean.TRUE.equals(usuario.getMustChangePassword())
+                Boolean.TRUE.equals(usuario.getMustChangePassword()),
+                usuario.getTimeZone()
         );
         return new AuthTokens(authResponse, refreshToken);
     }
