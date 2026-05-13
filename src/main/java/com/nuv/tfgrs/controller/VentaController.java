@@ -26,7 +26,7 @@ public class VentaController {
     private final VentaService ventaService;
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'VIEWER')")
     public ResponseEntity<List<VentaResponse>> listar(
             @RequestParam(name = "clientId", required = false) Long clientId,
             @RequestParam(name = "limit", defaultValue = "100") int limit

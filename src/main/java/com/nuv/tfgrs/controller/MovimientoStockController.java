@@ -20,7 +20,7 @@ public class MovimientoStockController {
     private final MovimientoStockQueryService movimientoStockQueryService;
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'VIEWER')")
     public ResponseEntity<MovimientoStockPageResponse> listar(
             @RequestParam(name = "productId", required = false) Long productId,
             @RequestParam(name = "tipo", required = false) String tipo,

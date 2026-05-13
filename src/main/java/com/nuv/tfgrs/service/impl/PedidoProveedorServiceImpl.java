@@ -11,8 +11,10 @@ import com.nuv.tfgrs.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.repository.ProveedorRepository;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
+import com.nuv.tfgrs.service.PedidoProveedorEmailService;
 import com.nuv.tfgrs.service.PedidoProveedorService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PedidoProveedorServiceImpl implements PedidoProveedorService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
@@ -39,6 +42,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     private final MovimientoStockRepository movimientoStockRepository;
     private final StockAlertManager stockAlertManager;
     private final CurrentOrganizationResolver currentOrganizationResolver;
+    private final PedidoProveedorEmailService pedidoProveedorEmailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -62,7 +66,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         for (CrearPedidoProveedorRequest.Item item : request.items()) {
             Producto product = productsById.get(item.productoId());
             if (product == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uno o más productos no existen");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uno o mÃ¡s productos no existen");
             }
             if (!Objects.equals(product.getProvider().getId(), providerId)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Todos los productos del pedido deben pertenecer al proveedor seleccionado");
@@ -70,7 +74,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         }
 
         LocalDate desiredArrival = request.fechaLlegadaDeseada();
-        LocalDate recommendedOrderDate = desiredArrival.minusDays(provider.getLeadTimeDays());
+        LocalDate recommendedOrderDate = LocalDate.now().plusDays(provider.getLeadTimeDays());
 
         String insertOrderSql = """
                 INSERT INTO purchase_orders (
@@ -112,7 +116,15 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         if (updated == 0) {
             throwInvalidStatusTransition(orderId, organizationId, "DRAFT", "No se puede enviar el pedido en su estado actual");
         }
-        return fetchOrderById(orderId, organizationId);
+        PedidoProveedorResponse response = fetchOrderById(orderId, organizationId);
+        try {
+            Proveedor proveedor = proveedorRepository.findByIdAndOrganizationId(response.providerId(), organizationId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Proveedor no encontrado: " + response.providerId()));
+            pedidoProveedorEmailService.enviarPedidoAProveedor(response, proveedor);
+        } catch (Exception ex) {
+            log.warn("No se pudo enviar el correo del pedido #{} al proveedor. El pedido ya quedó en estado SENT.", orderId, ex);
+        }
+        return response;
     }
 
     @Override
@@ -157,7 +169,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                     .product(saved)
                     .delta(item.cantidad())
                     .reason(MovimientoStock.Reason.PURCHASE)
-                    .notes("Recepción de pedido proveedor #" + orderId)
+                    .notes("RecepciÃ³n de pedido proveedor #" + orderId)
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movement);
@@ -183,7 +195,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No se puede cancelar un pedido ya recibido");
         }
         if ("CANCELLED".equals(currentStatus)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya está cancelado");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya estÃ¡ cancelado");
         }
 
         String sql = """
@@ -241,7 +253,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
 
         Producto product = productsById.get(item.productoId());
         if (product == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uno o más productos no existen");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uno o mÃ¡s productos no existen");
         }
 
         if (product.getAcquisitionPrice() != null) {
@@ -259,7 +271,7 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         Proveedor provider = proveedorRepository.findByIdAndOrganizationId(providerId, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proveedor no encontrado: " + providerId));
         if (!Boolean.TRUE.equals(provider.getActive())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El proveedor no está activo");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El proveedor no estÃ¡ activo");
         }
         return provider;
     }
@@ -461,3 +473,5 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     ) {
     }
 }
+
+

@@ -2,8 +2,10 @@ package com.nuv.tfgrs.service.impl;
 
 import com.nuv.tfgrs.dto.response.AlertaStockResponse;
 import com.nuv.tfgrs.entity.AlertaStock;
+import com.nuv.tfgrs.entity.Producto;
 import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.repository.AlertaStockRepository;
+import com.nuv.tfgrs.repository.ProductoRepository;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.AlertaStockService;
 import lombok.RequiredArgsConstructor;
@@ -13,19 +15,24 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class AlertaStockServiceImpl implements AlertaStockService {
 
     private final AlertaStockRepository alertaStockRepository;
+    private final ProductoRepository productoRepository;
     private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<AlertaStockResponse> listar(Boolean resueltas) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        syncPriceAnomalyAlertsForOrganization(organizationId);
+
         List<AlertaStock> alerts;
         if (resueltas == null) {
             alerts = alertaStockRepository.findByOrganizationId(organizationId);
@@ -70,5 +77,41 @@ public class AlertaStockServiceImpl implements AlertaStockService {
         int current = currentQuantity == null ? 0 : currentQuantity;
         int minimum = minimumStockLevel == null ? 0 : minimumStockLevel;
         return current <= minimum;
+    }
+
+    private void syncPriceAnomalyAlertsForOrganization(Long organizationId) {
+        List<Producto> anomalyProducts = productoRepository.findPriceAnomalyProductsByOrganizationId(organizationId);
+        Set<Long> anomalyProductIds = new HashSet<>();
+        for (Producto product : anomalyProducts) {
+            anomalyProductIds.add(product.getId());
+        }
+
+        List<AlertaStock> openPriceAnomalyAlerts = alertaStockRepository
+                .findByOrganizationIdAndAlertTypeAndResolvedFalseOrderByCreatedAtDesc(
+                        organizationId,
+                        AlertaStock.AlertType.PRICE_ANOMALY
+                );
+        Set<Long> alertedProductIds = new HashSet<>();
+        for (AlertaStock alert : openPriceAnomalyAlerts) {
+            alertedProductIds.add(alert.getProduct().getId());
+        }
+
+        for (Producto product : anomalyProducts) {
+            if (alertedProductIds.contains(product.getId())) continue;
+            alertaStockRepository.save(AlertaStock.builder()
+                    .organizationId(organizationId)
+                    .product(product)
+                    .alertType(AlertaStock.AlertType.PRICE_ANOMALY)
+                    .message("Anomalía de precio: precio de venta por debajo del coste en " + product.getName() + " (" + product.getSku() + ")")
+                    .build());
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        for (AlertaStock alert : openPriceAnomalyAlerts) {
+            if (anomalyProductIds.contains(alert.getProduct().getId())) continue;
+            alert.setResolved(true);
+            alert.setResolvedAt(now);
+        }
+        alertaStockRepository.saveAll(openPriceAnomalyAlerts);
     }
 }

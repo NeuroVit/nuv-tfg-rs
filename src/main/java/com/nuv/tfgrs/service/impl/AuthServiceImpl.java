@@ -26,12 +26,17 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.time.DateTimeException;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -50,12 +55,14 @@ public class AuthServiceImpl implements AuthService {
     private static final String GENERIC_LOGIN_ERROR = "Credenciales inválidas";
     private static final String GENERIC_GOOGLE_ERROR = "No se pudo completar el inicio de sesión con Google";
     private static final String GENERIC_REFRESH_ERROR = "No se pudo renovar la sesión";
+    private static final String DEFAULT_TIME_ZONE = Usuario.DEFAULT_TIME_ZONE;
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final UserDetailsService userDetailsService;
 
     @Value("${google.client-id:}")
     private String googleClientId;
@@ -66,7 +73,7 @@ public class AuthServiceImpl implements AuthService {
     @Value("${auth.debug.google:false}")
     private boolean googleDebugEnabled;
 
-    @Value("${auth.role-switch.enabled:true}")
+    @Value("${auth.role-switch.enabled:false}")
     private boolean roleSwitchEnabled;
 
     @Override
@@ -86,8 +93,9 @@ public class AuthServiceImpl implements AuthService {
                 .role(Usuario.Role.ROLE_VIEWER)
                 .active(true)
                 .mustChangePassword(false)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .timeZone(DEFAULT_TIME_ZONE)
+                .createdAt(LocalDateTime.now(ZoneOffset.UTC))
+                .updatedAt(LocalDateTime.now(ZoneOffset.UTC))
                 .build();
 
         try {
@@ -106,15 +114,29 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthTokens login(AuthRequest.Login request) {
+        String identifier = request.username() == null ? "" : request.username().trim();
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.username(), request.password())
+                    new UsernamePasswordAuthenticationToken(identifier, request.password())
             );
         } catch (AuthenticationException ex) {
+            usuarioRepository.findByUsername(identifier)
+                    .or(() -> usuarioRepository.findByEmail(identifier))
+                    .ifPresentOrElse(
+                            user -> log.warn(
+                                    "Login fallido para usuario existente: input={}, resolvedUsername={}, active={}, mustChangePassword={}",
+                                    identifier,
+                                    user.getUsername(),
+                                    user.getActive(),
+                                    user.getMustChangePassword()
+                            ),
+                            () -> log.warn("Login fallido: no existe usuario para input={}", identifier)
+                    );
             throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR, ex);
         }
 
-        var usuario = usuarioRepository.findByUsername(request.username())
+        var usuario = usuarioRepository.findByUsername(identifier)
+                .or(() -> usuarioRepository.findByEmail(identifier))
                 .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
 
         log.info("Login exitoso");
@@ -179,8 +201,9 @@ public class AuthServiceImpl implements AuthService {
                         nuevo.setRole(Role.ROLE_VIEWER);
                         nuevo.setActive(true);
                         nuevo.setMustChangePassword(false);
-                        nuevo.setCreatedAt(LocalDateTime.now());
-                        nuevo.setUpdatedAt(LocalDateTime.now());
+                        nuevo.setTimeZone(DEFAULT_TIME_ZONE);
+                        nuevo.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
+                        nuevo.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
                         return nuevo;
                     });
 
@@ -219,6 +242,10 @@ public class AuthServiceImpl implements AuthService {
             Usuario usuario = usuarioRepository.findByUsername(username)
                     .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR));
 
+            if (!usuario.isEnabled()) {
+                throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR);
+            }
+
             if (!jwtService.esRefreshTokenValido(refreshToken, usuario)) {
                 throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_REFRESH_ERROR);
             }
@@ -252,7 +279,8 @@ public class AuthServiceImpl implements AuthService {
         Role nuevoRol = parseRole(role);
         Role oldRole = usuario.getRole();
         usuario.setRole(nuevoRol);
-        usuario.setUpdatedAt(LocalDateTime.now());
+        bumpTokenVersion(usuario);
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
         Usuario saved = usuarioRepository.save(usuario);
         recordRoleChange(saved.getId(), saved.getId(), oldRole, nuevoRol, "SELF_SWITCH");
 
@@ -285,7 +313,16 @@ public class AuthServiceImpl implements AuthService {
         usuario.setNombre(request.nombre().trim());
         usuario.setApellidos(request.apellidos().trim());
         usuario.setEmail(normalizedEmail);
-        usuario.setUpdatedAt(LocalDateTime.now());
+        if (request.timeZone() != null) {
+            String normalizedTimeZone = request.timeZone().trim();
+            try {
+                ZoneId.of(normalizedTimeZone);
+            } catch (DateTimeException ex) {
+                throw new AuthException(HttpStatus.BAD_REQUEST, "Zona horaria inválida");
+            }
+            usuario.setTimeZone(normalizedTimeZone);
+        }
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
 
         Usuario saved = usuarioRepository.save(usuario);
         return UserProfileResponse.from(saved);
@@ -311,7 +348,18 @@ public class AuthServiceImpl implements AuthService {
 
         usuario.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         usuario.setMustChangePassword(false);
-        usuario.setUpdatedAt(LocalDateTime.now());
+        bumpTokenVersion(usuario);
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        usuarioRepository.save(usuario);
+    }
+
+    @Override
+    @Transactional
+    public void revocarTokensUsuarioActual(String username) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+        bumpTokenVersion(usuario);
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
         usuarioRepository.save(usuario);
     }
 
@@ -329,15 +377,26 @@ public class AuthServiceImpl implements AuthService {
         );
     }
 
+    private void bumpTokenVersion(Usuario usuario) {
+        int current = usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion();
+        usuario.setTokenVersion(current + 1);
+    }
+
     private AuthTokens buildAuthTokens(Usuario usuario) {
-        String accessToken = jwtService.generarAccessToken(usuario);
-        String refreshToken = jwtService.generarRefreshToken(usuario);
+        UserDetails userDetails = userDetailsService.loadUserByUsername(usuario.getUsername());
+        String resolvedRole = userDetails.getAuthorities().stream()
+                .findFirst()
+                .map(a -> a.getAuthority())
+                .orElse(Usuario.Role.ROLE_VIEWER.name());
+        String accessToken = jwtService.generarAccessToken(userDetails);
+        String refreshToken = jwtService.generarRefreshToken(userDetails);
         AuthResponse authResponse = new AuthResponse(
                 accessToken,
                 usuario.getUsername(),
-                usuario.getRole().name(),
+                resolvedRole,
                 jwtService.getAccessExpirationMs(),
-                Boolean.TRUE.equals(usuario.getMustChangePassword())
+                Boolean.TRUE.equals(usuario.getMustChangePassword()),
+                usuario.getTimeZone()
         );
         return new AuthTokens(authResponse, refreshToken);
     }

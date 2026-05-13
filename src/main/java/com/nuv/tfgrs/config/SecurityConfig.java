@@ -2,7 +2,10 @@ package com.nuv.tfgrs.config;
 
 import com.nuv.tfgrs.security.JwtAuthFilter;
 import com.nuv.tfgrs.security.AuthRateLimitFilter;
+import com.nuv.tfgrs.security.BearerAuthEntryPoint;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,9 +28,11 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.Arrays;
 import java.util.List;
 
+@Slf4j
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -36,18 +41,39 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final AuthRateLimitFilter authRateLimitFilter;
+    private final BearerAuthEntryPoint bearerAuthEntryPoint;
     private final UserDetailsService userDetailsService;  // ← inject the standalone service
 
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
+
+    @PostConstruct
+    void logResolvedCorsOrigins() {
+        log.info(
+                "CORS allowed origins resolved: origins={}, patterns={}",
+                resolveAllowedOrigins(),
+                resolveAllowedOriginPatterns()
+        );
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .anonymous(AbstractHttpConfigurer::disable)
+            .formLogin(AbstractHttpConfigurer::disable)
+            .httpBasic(AbstractHttpConfigurer::disable)
+            .logout(AbstractHttpConfigurer::disable)
+            .requestCache(AbstractHttpConfigurer::disable)
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions ->
+                    exceptions
+                        .authenticationEntryPoint(bearerAuthEntryPoint)
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                response.sendError(HttpServletResponse.SC_FORBIDDEN))
+                )
                 .headers(headers -> headers
                     .crossOriginOpenerPolicy(coop ->
                         coop.policy(CrossOriginOpenerPolicyHeaderWriter.CrossOriginOpenerPolicy.SAME_ORIGIN_ALLOW_POPUPS)
@@ -82,6 +108,7 @@ public class SecurityConfig {
                 "X-Requested-With",
                 "ngrok-skip-browser-warning"
         ));
+        config.setExposedHeaders(List.of("Content-Disposition", "X-Rate-Limit-Remaining"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
@@ -107,13 +134,10 @@ public class SecurityConfig {
     }
 
     private List<String> resolveAllowedOriginPatterns() {
-        // Some iOS WebView/Tauri flows can surface non-standard or null-like origins.
-        // Keep explicit CORS origins as primary control, and use targeted patterns as fallback.
         return List.of(
                 "tauri://*",
                 "http://tauri.localhost",
-                "https://tauri.localhost",
-                "null"
+                "https://tauri.localhost"
         );
     }
 

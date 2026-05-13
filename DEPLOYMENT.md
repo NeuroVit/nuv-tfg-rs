@@ -120,3 +120,19 @@ VITE_API_URL=https://your-backend.up.railway.app
 ```
 
 If your frontend uses a different variable name, use that equivalent.
+
+## Runtime scaling assumption (current)
+
+This backend currently assumes a **single Railway replica** for two in-memory auth/safety components:
+
+- `AuthRateLimitFilter` Bucket4j buckets are stored in-process (`ConcurrentHashMap`).
+- Google mobile credential ticket maps in `AuthController` (`pendingMobileCredentials`, `consumedMobileCredentials`) are stored in-process.
+
+Implication:
+- If you scale to multiple replicas now, rate-limit and mobile-credential behavior will be inconsistent across instances.
+
+Current deployment rule:
+- Keep Railway replicas at `1` until distributed state is implemented.
+
+Backlog (do not implement in this change):
+- Migrate auth rate-limiting and mobile credential ticket state to Redis/shared storage for multi-replica correctness.

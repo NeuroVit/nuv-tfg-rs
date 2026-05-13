@@ -7,6 +7,7 @@ import com.nuv.tfgrs.exception.ResourceNotFoundException;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import com.nuv.tfgrs.service.BundleService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -154,11 +155,18 @@ public class BundleServiceImpl implements BundleService {
     @Transactional
     public void eliminar(Long bundleId) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
-        String sql = "DELETE FROM bundles WHERE id = :bundleId AND organization_id = :organizationId";
-        int affected = jdbcTemplate.update(sql, new MapSqlParameterSource("bundleId", bundleId)
-                .addValue("organizationId", organizationId));
-        if (affected == 0) {
-            throw new ResourceNotFoundException("Bundle no encontrado: " + bundleId);
+        try {
+            String sql = "DELETE FROM bundles WHERE id = :bundleId AND organization_id = :organizationId";
+            int affected = jdbcTemplate.update(sql, new MapSqlParameterSource("bundleId", bundleId)
+                    .addValue("organizationId", organizationId));
+            if (affected == 0) {
+                throw new ResourceNotFoundException("Bundle no encontrado: " + bundleId);
+            }
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede eliminar el bundle porque está asociado a registros existentes (por ejemplo, ventas)."
+            );
         }
     }
 
