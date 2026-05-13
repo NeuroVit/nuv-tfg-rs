@@ -5,10 +5,14 @@ import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
 import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
+import com.nuv.tfgrs.dto.response.ProductCreationRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
+import com.nuv.tfgrs.dto.response.RevenueComparativaBucketResponse;
+import com.nuv.tfgrs.dto.response.RevenueComparativaResponse;
 import com.nuv.tfgrs.dto.response.SalesVelocityRowResponse;
 import com.nuv.tfgrs.dto.response.StockDistributionRowResponse;
 import com.nuv.tfgrs.dto.response.StockPorCategoriaRowResponse;
+import com.nuv.tfgrs.dto.response.StockReceiptRowResponse;
 import com.nuv.tfgrs.dto.response.TopProductoVelocidadRowResponse;
 import com.nuv.tfgrs.dto.response.VelocidadResumenRowResponse;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
@@ -23,11 +27,16 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Locale;
 import java.util.stream.Stream;
 
 @Service
@@ -103,21 +112,28 @@ public class AnaliticaServiceImpl implements AnaliticaService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<PriceTrendRowResponse> tendenciasPrecios(int limit) {
+    public List<PriceTrendRowResponse> tendenciasPrecios(int limit, Integer days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         int safeLimit = Math.max(1, Math.min(limit, 200));
-        String sql = """
+        Integer safeDays = normalizeDays(days);
+        String sqlBase = """
                 SELECT v.history_id, v.product_id, v.sku, v.product_name, v.category_name,
                        v.old_price, v.new_price, v.price_delta, v.pct_change, v.changed_at, v.current_price
                 FROM v_price_trends v
                 JOIN products p ON p.id = v.product_id
                 WHERE p.organization_id = :organizationId
-                ORDER BY v.changed_at DESC
-                LIMIT :limit
                 """;
+        String sql = safeDays == null
+                ? sqlBase + "\nORDER BY v.changed_at DESC\nLIMIT :limit"
+                : sqlBase + "\nAND v.changed_at >= :dateFrom\nORDER BY v.changed_at DESC\nLIMIT :limit";
 
-        return jdbcTemplate.query(sql, new MapSqlParameterSource("limit", safeLimit)
-                .addValue("organizationId", organizationId), (rs, rowNum) ->
+        MapSqlParameterSource params = new MapSqlParameterSource("limit", safeLimit)
+                .addValue("organizationId", organizationId);
+        if (safeDays != null) {
+            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays).atStartOfDay());
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) ->
                 new PriceTrendRowResponse(
                         rs.getLong("history_id"),
                         rs.getLong("product_id"),
@@ -136,22 +152,57 @@ public class AnaliticaServiceImpl implements AnaliticaService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<BundleCandidateRowResponse> candidatosBundle(int limit) {
+    public List<BundleCandidateRowResponse> candidatosBundle(int limit, Integer days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         int safeLimit = Math.max(1, Math.min(limit, 200));
-        String sql = """
-                SELECT v.product_a_id, v.product_a_sku, v.product_a_name, v.product_a_price,
-                       v.product_b_id, v.product_b_sku, v.product_b_name, v.product_b_price,
-                       v.co_occurrence_count, v.combined_price
-                FROM v_bundle_candidates v
-                JOIN products p ON p.id = v.product_a_id
-                WHERE p.organization_id = :organizationId
-                ORDER BY v.co_occurrence_count DESC, v.combined_price DESC
+        Integer safeDays = normalizeDays(days);
+        String sqlBase = """
+                SELECT
+                    a.product_id AS product_a_id,
+                    pa.sku AS product_a_sku,
+                    pa.name AS product_a_name,
+                    pa.unit_price AS product_a_price,
+                    b.product_id AS product_b_id,
+                    pb.sku AS product_b_sku,
+                    pb.name AS product_b_name,
+                    pb.unit_price AS product_b_price,
+                    COUNT(DISTINCT a.sale_id) AS co_occurrence_count,
+                    ROUND(pa.unit_price + pb.unit_price, 2) AS combined_price
+                FROM sale_items a
+                JOIN sale_items b
+                    ON a.sale_id = b.sale_id
+                   AND a.product_id < b.product_id
+                JOIN sales s ON s.id = a.sale_id
+                JOIN products pa ON pa.id = a.product_id
+                JOIN products pb ON pb.id = b.product_id
+                WHERE s.organization_id = :organizationId
+                """;
+        String sql = safeDays == null
+                ? sqlBase + """
+                GROUP BY
+                    a.product_id, pa.sku, pa.name, pa.unit_price,
+                    b.product_id, pb.sku, pb.name, pb.unit_price
+                HAVING COUNT(DISTINCT a.sale_id) >= 2
+                ORDER BY co_occurrence_count DESC, combined_price DESC
+                LIMIT :limit
+                """
+                : sqlBase + """
+                  AND s.sold_at >= :dateFrom
+                GROUP BY
+                    a.product_id, pa.sku, pa.name, pa.unit_price,
+                    b.product_id, pb.sku, pb.name, pb.unit_price
+                HAVING COUNT(DISTINCT a.sale_id) >= 2
+                ORDER BY co_occurrence_count DESC, combined_price DESC
                 LIMIT :limit
                 """;
 
-        return jdbcTemplate.query(sql, new MapSqlParameterSource("limit", safeLimit)
-                .addValue("organizationId", organizationId), (rs, rowNum) ->
+        MapSqlParameterSource params = new MapSqlParameterSource("limit", safeLimit)
+                .addValue("organizationId", organizationId);
+        if (safeDays != null) {
+            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays).atStartOfDay());
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) ->
                 new BundleCandidateRowResponse(
                         rs.getLong("product_a_id"),
                         rs.getString("product_a_sku"),
@@ -436,6 +487,79 @@ public class AnaliticaServiceImpl implements AnaliticaService {
 
     @Override
     @Transactional(readOnly = true)
+    public RevenueComparativaResponse revenueComparativa(int days) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        LocalDateTime now = LocalDateTime.now();
+        RevenueTimelineSpec spec = resolveRevenueTimelineSpec(organizationId, days, now);
+        if (spec.bucketCount() <= 0) {
+            return new RevenueComparativaResponse(spec.currentLabel(), spec.previousLabel(), spec.granularity().name(), List.of());
+        }
+
+        LocalDateTime previousStart = spec.currentStart().minusYears(1);
+        LocalDateTime previousEnd = spec.currentEnd().minusYears(1);
+        LocalDateTime queryFrom = previousStart.isBefore(spec.currentStart()) ? previousStart : spec.currentStart();
+
+        String sql = """
+                SELECT s.sold_at, s.total_amount
+                FROM sales s
+                WHERE s.organization_id = :organizationId
+                  AND s.sold_at >= :fromDate
+                  AND s.sold_at <= :toDate
+                ORDER BY s.sold_at
+                """;
+        List<SaleRevenuePoint> points = jdbcTemplate.query(
+                sql,
+                new MapSqlParameterSource("organizationId", organizationId)
+                        .addValue("fromDate", queryFrom)
+                        .addValue("toDate", spec.currentEnd()),
+                (rs, rowNum) -> new SaleRevenuePoint(
+                        rs.getTimestamp("sold_at").toLocalDateTime(),
+                        asBigDecimal(rs.getBigDecimal("total_amount"))
+                )
+        );
+
+        BigDecimal[] currentTotals = new BigDecimal[spec.bucketCount()];
+        BigDecimal[] previousTotals = new BigDecimal[spec.bucketCount()];
+        for (int i = 0; i < spec.bucketCount(); i++) {
+            currentTotals[i] = BigDecimal.ZERO;
+            previousTotals[i] = BigDecimal.ZERO;
+        }
+
+        for (SaleRevenuePoint point : points) {
+            LocalDateTime soldAt = point.soldAt();
+            if (!soldAt.isBefore(spec.currentStart()) && !soldAt.isAfter(spec.currentEnd())) {
+                int index = resolveBucketIndex(soldAt, spec.currentStart(), spec.granularity(), spec.bucketCount());
+                if (index >= 0) {
+                    currentTotals[index] = currentTotals[index].add(point.amount());
+                }
+                continue;
+            }
+
+            if (!soldAt.isBefore(previousStart) && !soldAt.isAfter(previousEnd)) {
+                LocalDateTime shifted = soldAt.plusYears(1);
+                int index = resolveBucketIndex(shifted, spec.currentStart(), spec.granularity(), spec.bucketCount());
+                if (index >= 0) {
+                    previousTotals[index] = previousTotals[index].add(point.amount());
+                }
+            }
+        }
+
+        List<RevenueComparativaBucketResponse> buckets = new ArrayList<>(spec.bucketCount());
+        for (int i = 0; i < spec.bucketCount(); i++) {
+            LocalDateTime bucketStart = resolveBucketStart(spec.currentStart(), spec.granularity(), i);
+            String label = resolveBucketLabel(bucketStart, spec.granularity(), spec.requestedDays(), i);
+            buckets.add(new RevenueComparativaBucketResponse(
+                    label,
+                    currentTotals[i].setScale(2, RoundingMode.HALF_UP),
+                    previousTotals[i].setScale(2, RoundingMode.HALF_UP)
+            ));
+        }
+
+        return new RevenueComparativaResponse(spec.currentLabel(), spec.previousLabel(), spec.granularity().name(), buckets);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<RentabilidadProductoRowResponse> rentabilidadProductos(int days, int limit) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         Integer safeDays = normalizeDays(days);
@@ -523,6 +647,57 @@ public class AnaliticaServiceImpl implements AnaliticaService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<ProductCreationRowResponse> productosCreadosTimeline(int days) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Integer safeDays = normalizeDays(days);
+        String sqlBase = """
+                SELECT v.creation_date, v.products_created
+                FROM v_product_creation_timeline v
+                WHERE v.organization_id = :organizationId
+                """;
+        String sql = safeDays == null
+                ? sqlBase + "\nORDER BY v.creation_date"
+                : sqlBase + "\n  AND v.creation_date >= :dateFrom\nORDER BY v.creation_date";
+
+        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+        if (safeDays != null) {
+            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) -> new ProductCreationRowResponse(
+                rs.getDate("creation_date").toLocalDate(),
+                rs.getLong("products_created")
+        ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<StockReceiptRowResponse> stockRecibidoTimeline(int days) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        Integer safeDays = normalizeDays(days);
+        String sqlBase = """
+                SELECT v.receipt_date, v.units_received, v.value_received
+                FROM v_stock_receipts_timeline v
+                WHERE v.organization_id = :organizationId
+                """;
+        String sql = safeDays == null
+                ? sqlBase + "\nORDER BY v.receipt_date"
+                : sqlBase + "\n  AND v.receipt_date >= :dateFrom\nORDER BY v.receipt_date";
+
+        MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+        if (safeDays != null) {
+            params.addValue("dateFrom", LocalDate.now().minusDays(safeDays));
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) -> new StockReceiptRowResponse(
+                rs.getDate("receipt_date").toLocalDate(),
+                rs.getLong("units_received"),
+                rs.getBigDecimal("value_received")
+        ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public AnaliticaMetaResponse metadata(int days) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         Integer safeDays = normalizeDays(days);
@@ -557,6 +732,205 @@ public class AnaliticaServiceImpl implements AnaliticaService {
                 : "API_REAL";
 
         return new AnaliticaMetaResponse(source, analyticsSeedEnabled, generatedAt, resolvedWindowDays);
+    }
+
+    private RevenueTimelineSpec resolveRevenueTimelineSpec(Long organizationId, int days, LocalDateTime now) {
+        if (days == 1) {
+            LocalDateTime start = now.toLocalDate().atStartOfDay();
+            return new RevenueTimelineSpec(
+                    RevenueGranularity.HOUR,
+                    start,
+                    now,
+                    now.getHour() + 1,
+                    1,
+                    "Hoy",
+                    "Mismo día anterior"
+            );
+        }
+
+        if (days == 7) {
+            int daysFromMonday = now.getDayOfWeek().getValue() - DayOfWeek.MONDAY.getValue();
+            LocalDateTime start = now.toLocalDate().minusDays(daysFromMonday).atStartOfDay();
+            return new RevenueTimelineSpec(
+                    RevenueGranularity.DAY,
+                    start,
+                    now,
+                    daysFromMonday + 1,
+                    7,
+                    "Semana actual",
+                    "Misma semana año anterior"
+            );
+        }
+
+        if (days == 30) {
+            LocalDateTime start = now.toLocalDate().minusDays(29).atStartOfDay();
+            return new RevenueTimelineSpec(
+                    RevenueGranularity.DAY,
+                    start,
+                    now,
+                    30,
+                    30,
+                    "Últimos 30 días",
+                    "Mismo periodo año anterior"
+            );
+        }
+
+        if (days == 90) {
+            LocalDateTime start = now.toLocalDate().minusDays((12L * 7L) - 1).atStartOfDay();
+            return new RevenueTimelineSpec(
+                    RevenueGranularity.WEEK,
+                    start,
+                    now,
+                    12,
+                    90,
+                    "Últimas 12 semanas",
+                    "Mismo periodo año anterior"
+            );
+        }
+
+        if (days == 180) {
+            LocalDateTime start = now.toLocalDate().minusDays((24L * 7L) - 1).atStartOfDay();
+            return new RevenueTimelineSpec(
+                    RevenueGranularity.WEEK,
+                    start,
+                    now,
+                    24,
+                    180,
+                    "Últimas 24 semanas",
+                    "Mismo periodo año anterior"
+            );
+        }
+
+        Map<String, Object> minRow = jdbcTemplate.queryForMap(
+                """
+                        SELECT MIN(s.sold_at) AS min_sold_at
+                        FROM sales s
+                        WHERE s.organization_id = :organizationId
+                        """,
+                new MapSqlParameterSource("organizationId", organizationId)
+        );
+        LocalDateTime minSoldAt = asLocalDateTime(minRow.get("min_sold_at"));
+        if (minSoldAt == null) {
+            return new RevenueTimelineSpec(
+                    RevenueGranularity.DAY,
+                    now.toLocalDate().atStartOfDay(),
+                    now,
+                    0,
+                    0,
+                    "Histórico",
+                    "Mismo periodo año anterior"
+            );
+        }
+
+        long spanDays = Math.max(0L, ChronoUnit.DAYS.between(minSoldAt.toLocalDate(), now.toLocalDate()));
+        RevenueGranularity granularity = spanDays >= 730
+                ? RevenueGranularity.YEAR
+                : spanDays >= 90
+                ? RevenueGranularity.MONTH
+                : spanDays >= 21
+                ? RevenueGranularity.WEEK
+                : spanDays >= 1
+                ? RevenueGranularity.DAY
+                : RevenueGranularity.HOUR;
+
+        LocalDateTime start = truncateToGranularity(minSoldAt, granularity);
+        int bucketCount = resolveBucketCount(start, now, granularity);
+
+        return new RevenueTimelineSpec(
+                granularity,
+                start,
+                now,
+                bucketCount,
+                0,
+                "Histórico",
+                "Mismo periodo año anterior"
+        );
+    }
+
+    private int resolveBucketCount(LocalDateTime start, LocalDateTime end, RevenueGranularity granularity) {
+        if (end.isBefore(start)) return 0;
+        return switch (granularity) {
+            case HOUR -> Math.toIntExact(ChronoUnit.HOURS.between(start, end)) + 1;
+            case DAY -> Math.toIntExact(ChronoUnit.DAYS.between(start.toLocalDate(), end.toLocalDate())) + 1;
+            case WEEK -> (Math.toIntExact(ChronoUnit.DAYS.between(start.toLocalDate(), end.toLocalDate())) / 7) + 1;
+            case MONTH -> Math.toIntExact(ChronoUnit.MONTHS.between(YearMonth.from(start), YearMonth.from(end))) + 1;
+            case YEAR -> end.getYear() - start.getYear() + 1;
+        };
+    }
+
+    private LocalDateTime truncateToGranularity(LocalDateTime dateTime, RevenueGranularity granularity) {
+        return switch (granularity) {
+            case HOUR -> dateTime.withMinute(0).withSecond(0).withNano(0);
+            case DAY -> dateTime.toLocalDate().atStartOfDay();
+            case WEEK -> {
+                LocalDate date = dateTime.toLocalDate();
+                int daysFromMonday = date.getDayOfWeek().getValue() - DayOfWeek.MONDAY.getValue();
+                yield date.minusDays(daysFromMonday).atStartOfDay();
+            }
+            case MONTH -> dateTime.toLocalDate().withDayOfMonth(1).atStartOfDay();
+            case YEAR -> dateTime.toLocalDate().withDayOfYear(1).atStartOfDay();
+        };
+    }
+
+    private int resolveBucketIndex(
+            LocalDateTime value,
+            LocalDateTime bucketStart,
+            RevenueGranularity granularity,
+            int bucketCount
+    ) {
+        int index = switch (granularity) {
+            case HOUR -> Math.toIntExact(ChronoUnit.HOURS.between(bucketStart, value));
+            case DAY -> Math.toIntExact(ChronoUnit.DAYS.between(bucketStart.toLocalDate(), value.toLocalDate()));
+            case WEEK -> Math.toIntExact(ChronoUnit.DAYS.between(bucketStart.toLocalDate(), value.toLocalDate())) / 7;
+            case MONTH -> Math.toIntExact(ChronoUnit.MONTHS.between(YearMonth.from(bucketStart), YearMonth.from(value)));
+            case YEAR -> value.getYear() - bucketStart.getYear();
+        };
+        if (index < 0 || index >= bucketCount) return -1;
+        return index;
+    }
+
+    private LocalDateTime resolveBucketStart(LocalDateTime start, RevenueGranularity granularity, int index) {
+        return switch (granularity) {
+            case HOUR -> start.plusHours(index);
+            case DAY -> start.plusDays(index);
+            case WEEK -> start.plusDays((long) index * 7L);
+            case MONTH -> start.plusMonths(index);
+            case YEAR -> start.plusYears(index);
+        };
+    }
+
+    private String resolveBucketLabel(LocalDateTime start, RevenueGranularity granularity, int requestedDays, int index) {
+        return switch (granularity) {
+            case HOUR -> String.format("%02d:00", start.getHour());
+            case DAY -> requestedDays == 7
+                    ? start.toLocalDate().getDayOfWeek().getDisplayName(java.time.format.TextStyle.SHORT, new Locale("es", "ES")).replace(".", "")
+                    : String.format("%02d/%02d", start.getDayOfMonth(), start.getMonthValue());
+            case WEEK -> "S" + (index + 1);
+            case MONTH -> start.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, new Locale("es", "ES")).replace(".", "") + " " + start.getYear();
+            case YEAR -> String.valueOf(start.getYear());
+        };
+    }
+
+    private enum RevenueGranularity {
+        HOUR,
+        DAY,
+        WEEK,
+        MONTH,
+        YEAR
+    }
+
+    private record RevenueTimelineSpec(
+            RevenueGranularity granularity,
+            LocalDateTime currentStart,
+            LocalDateTime currentEnd,
+            int bucketCount,
+            int requestedDays,
+            String currentLabel,
+            String previousLabel
+    ) {
+    }
+
+    private record SaleRevenuePoint(LocalDateTime soldAt, BigDecimal amount) {
     }
 
     private java.math.BigDecimal asBigDecimal(Object value) {

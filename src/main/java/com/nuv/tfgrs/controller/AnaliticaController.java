@@ -5,10 +5,13 @@ import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
 import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
+import com.nuv.tfgrs.dto.response.ProductCreationRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
+import com.nuv.tfgrs.dto.response.RevenueComparativaResponse;
 import com.nuv.tfgrs.dto.response.SalesVelocityRowResponse;
 import com.nuv.tfgrs.dto.response.StockDistributionRowResponse;
 import com.nuv.tfgrs.dto.response.StockPorCategoriaRowResponse;
+import com.nuv.tfgrs.dto.response.StockReceiptRowResponse;
 import com.nuv.tfgrs.dto.response.TopProductoVelocidadRowResponse;
 import com.nuv.tfgrs.dto.response.VelocidadResumenRowResponse;
 import com.nuv.tfgrs.service.AnaliticaService;
@@ -47,17 +50,19 @@ public class AnaliticaController {
     @GetMapping("/precios")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<PriceTrendRowResponse>> precios(
-            @RequestParam(name = "limit", defaultValue = "120") int limit
+            @RequestParam(name = "limit", defaultValue = "120") int limit,
+            @RequestParam(name = "days", required = false) Integer days
     ) {
-        return ResponseEntity.ok(analiticaService.tendenciasPrecios(limit));
+        return ResponseEntity.ok(analiticaService.tendenciasPrecios(limit, days));
     }
 
     @GetMapping("/bundles-candidatos")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<BundleCandidateRowResponse>> bundles(
-            @RequestParam(name = "limit", defaultValue = "120") int limit
+            @RequestParam(name = "limit", defaultValue = "120") int limit,
+            @RequestParam(name = "days", required = false) Integer days
     ) {
-        return ResponseEntity.ok(analiticaService.candidatosBundle(limit));
+        return ResponseEntity.ok(analiticaService.candidatosBundle(limit, days));
     }
 
     @GetMapping("/velocidad-resumen")
@@ -97,6 +102,14 @@ public class AnaliticaController {
         return ResponseEntity.ok(analiticaService.finanzasResumen(days));
     }
 
+    @GetMapping("/revenue-comparativa")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<RevenueComparativaResponse> revenueComparativa(
+            @RequestParam(name = "days", defaultValue = "30") int days
+    ) {
+        return ResponseEntity.ok(analiticaService.revenueComparativa(days));
+    }
+
     @GetMapping("/rentabilidad-productos")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<RentabilidadProductoRowResponse>> rentabilidadProductos(
@@ -104,6 +117,22 @@ public class AnaliticaController {
             @RequestParam(name = "limit", defaultValue = "12") int limit
     ) {
         return ResponseEntity.ok(analiticaService.rentabilidadProductos(days, limit));
+    }
+
+    @GetMapping("/productos-creados")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ProductCreationRowResponse>> productosCreados(
+            @RequestParam(name = "days", defaultValue = "30") int days
+    ) {
+        return ResponseEntity.ok(analiticaService.productosCreadosTimeline(days));
+    }
+
+    @GetMapping("/stock-recibido")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<StockReceiptRowResponse>> stockRecibido(
+            @RequestParam(name = "days", defaultValue = "30") int days
+    ) {
+        return ResponseEntity.ok(analiticaService.stockRecibidoTimeline(days));
     }
 
     @GetMapping("/meta")
