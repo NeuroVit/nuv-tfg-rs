@@ -6,6 +6,7 @@ import com.nuv.tfgrs.entity.Proveedor;
 import com.nuv.tfgrs.service.PedidoProveedorEmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -23,9 +24,9 @@ import java.util.Locale;
 @Slf4j
 public class PedidoProveedorEmailServiceImpl implements PedidoProveedorEmailService {
 
-    private final JavaMailSender mailSender;
+    private final ObjectProvider<JavaMailSender> mailSenderProvider;
 
-    @Value("${spring.mail.username}")
+    @Value("${spring.mail.username:}")
     private String fromEmail;
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -36,6 +37,15 @@ public class PedidoProveedorEmailServiceImpl implements PedidoProveedorEmailServ
     public void enviarPedidoAProveedor(PedidoProveedorResponse pedido, Proveedor proveedor) {
         if (proveedor.getEmail() == null || proveedor.getEmail().isBlank()) {
             log.info("Proveedor {} sin email. Se omite envio de pedido #{}", proveedor.getId(), pedido.id());
+            return;
+        }
+        if (fromEmail == null || fromEmail.isBlank()) {
+            log.warn("spring.mail.username no configurado. Se omite envio de pedido #{}", pedido.id());
+            return;
+        }
+        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
+        if (mailSender == null) {
+            log.warn("JavaMailSender no disponible. Se omite envio de pedido #{}", pedido.id());
             return;
         }
 
