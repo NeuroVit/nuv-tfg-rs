@@ -5,12 +5,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
 
 public record EditarProveedorRequest(
         @NotBlank
         @Size(max = 200)
+        @Pattern(regexp = "^(?!.*\\d).+$", message = "El nombre no puede contener numeros")
         String nombre,
 
+        @NotBlank
         @Email
         @Size(max = 254)
         String email,

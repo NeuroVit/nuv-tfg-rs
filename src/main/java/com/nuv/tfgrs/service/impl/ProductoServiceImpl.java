@@ -116,6 +116,8 @@ public class ProductoServiceImpl implements ProductoService {
     public ProductoResponse actualizar(Long id, EditarProductoRequest request) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         var producto = findOrThrow(id, organizationId);
+        BigDecimal previousUnitPrice = producto.getUnitPrice();
+        BigDecimal previousAcquisitionPrice = producto.getAcquisitionPrice();
 
         if (request.nombre() != null) {
             if (request.nombre().isBlank()) {
@@ -157,6 +159,7 @@ public class ProductoServiceImpl implements ProductoService {
 
         Producto saved = productoRepository.save(producto);
         stockAlertManager.syncForProduct(saved);
+        stockAlertManager.syncPriceAnomaly(saved, previousUnitPrice, previousAcquisitionPrice);
         return ProductoResponse.from(saved);
     }
 
