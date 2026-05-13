@@ -1,11 +1,15 @@
 package com.nuv.tfgrs.service;
 
 import com.nuv.tfgrs.dto.response.BundleCandidateRowResponse;
+import com.nuv.tfgrs.dto.response.BundlePerformanceRowResponse;
+import com.nuv.tfgrs.dto.response.ClienteRentabilidadRowResponse;
 import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
+import com.nuv.tfgrs.dto.response.AlertaSerieRowResponse;
 import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
 import com.nuv.tfgrs.dto.response.ProductCreationRowResponse;
+import com.nuv.tfgrs.dto.response.ProveedorPerformanceRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
 import com.nuv.tfgrs.dto.response.RevenueComparativaResponse;
 import com.nuv.tfgrs.dto.response.SalesVelocityRowResponse;
@@ -29,6 +33,10 @@ public interface AnaliticaService {
     FinanzasResumenResponse finanzasResumen(int days);
     RevenueComparativaResponse revenueComparativa(int days);
     List<RentabilidadProductoRowResponse> rentabilidadProductos(int days, int limit);
+    List<BundlePerformanceRowResponse> bundlesPerformance(int days, int limit);
+    List<ClienteRentabilidadRowResponse> clientesRentabilidad(int days, int limit);
+    List<ProveedorPerformanceRowResponse> proveedoresPerformance(int days, int limit);
+    List<AlertaSerieRowResponse> alertasSerie(int days);
     List<ProductCreationRowResponse> productosCreadosTimeline(int days);
     List<StockReceiptRowResponse> stockRecibidoTimeline(int days);
     AnaliticaMetaResponse metadata(int days);

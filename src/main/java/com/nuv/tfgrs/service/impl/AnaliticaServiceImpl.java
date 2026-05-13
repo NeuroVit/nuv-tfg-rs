@@ -1,11 +1,15 @@
 package com.nuv.tfgrs.service.impl;
 
 import com.nuv.tfgrs.dto.response.BundleCandidateRowResponse;
+import com.nuv.tfgrs.dto.response.BundlePerformanceRowResponse;
+import com.nuv.tfgrs.dto.response.ClienteRentabilidadRowResponse;
 import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
+import com.nuv.tfgrs.dto.response.AlertaSerieRowResponse;
 import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
 import com.nuv.tfgrs.dto.response.ProductCreationRowResponse;
+import com.nuv.tfgrs.dto.response.ProveedorPerformanceRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
 import com.nuv.tfgrs.dto.response.RevenueComparativaBucketResponse;
 import com.nuv.tfgrs.dto.response.RevenueComparativaResponse;
@@ -677,6 +681,288 @@ public class AnaliticaServiceImpl implements AnaliticaService {
                 rs.getBigDecimal("cogs"),
                 rs.getBigDecimal("margen"),
                 rs.getBigDecimal("margen_pct")
+        ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BundlePerformanceRowResponse> bundlesPerformance(int days, int limit) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        Integer safeDays = normalizeDays(days);
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+
+        String sqlBase = """
+                SELECT
+                    si.bundle_id AS bundle_id,
+                    b.name AS bundle_name,
+                    SUM(si.quantity) AS units_sold,
+                    ROUND(SUM(si.quantity * si.unit_price_snapshot), 2) AS revenue,
+                    ROUND(SUM(si.quantity * si.cost_price_snapshot), 2) AS cost,
+                    ROUND(SUM(si.quantity * (si.unit_price_snapshot - si.cost_price_snapshot)), 2) AS profit,
+                    CASE
+                        WHEN SUM(si.quantity * si.unit_price_snapshot) = 0 THEN 0
+                        ELSE ROUND(
+                            (
+                                SUM(si.quantity * (si.unit_price_snapshot - si.cost_price_snapshot))
+                                / SUM(si.quantity * si.unit_price_snapshot)
+                            ) * 100,
+                            2
+                        )
+                    END AS margin,
+                    COUNT(DISTINCT s.id) AS sales_count
+                FROM sale_items si
+                JOIN sales s ON s.id = si.sale_id
+                JOIN bundles b
+                  ON b.id = si.bundle_id
+                 AND b.organization_id = s.organization_id
+                WHERE s.organization_id = :organizationId
+                  AND si.bundle_id IS NOT NULL
+                """;
+        String sql = safeDays == null
+                ? sqlBase + """
+                GROUP BY si.bundle_id, b.name
+                ORDER BY revenue DESC, bundle_name
+                LIMIT :limit
+                """
+                : sqlBase + """
+                  AND s.sold_at >= :dateFrom
+                GROUP BY si.bundle_id, b.name
+                ORDER BY revenue DESC, bundle_name
+                LIMIT :limit
+                """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("organizationId", organizationId)
+                .addValue("limit", safeLimit);
+        if (safeDays != null) {
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) -> new BundlePerformanceRowResponse(
+                rs.getLong("bundle_id"),
+                rs.getString("bundle_name"),
+                rs.getInt("units_sold"),
+                rs.getBigDecimal("revenue"),
+                rs.getBigDecimal("cost"),
+                rs.getBigDecimal("profit"),
+                rs.getBigDecimal("margin"),
+                rs.getInt("sales_count")
+        ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ClienteRentabilidadRowResponse> clientesRentabilidad(int days, int limit) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        Integer safeDays = normalizeDays(days);
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+
+        String sqlBase = """
+                SELECT
+                    c.id AS client_id,
+                    c.name AS client_name,
+                    COUNT(*) AS sales_count,
+                    SUM(sa.units_sold) AS units_sold,
+                    ROUND(SUM(sa.revenue), 2) AS revenue,
+                    ROUND(SUM(sa.cost), 2) AS cost,
+                    ROUND(SUM(sa.profit), 2) AS profit,
+                    CASE
+                        WHEN SUM(sa.revenue) = 0 THEN 0
+                        ELSE ROUND((SUM(sa.profit) / SUM(sa.revenue)) * 100, 2)
+                    END AS margin,
+                    MAX(s.sold_at) AS last_sale_at,
+                    ROUND(AVG(s.total_amount), 2) AS avg_ticket
+                FROM sales s
+                JOIN clients c ON c.id = s.client_id
+                JOIN (
+                    SELECT
+                        si.sale_id,
+                        SUM(si.quantity) AS units_sold,
+                        SUM(si.quantity * si.unit_price_snapshot) AS revenue,
+                        SUM(si.quantity * si.cost_price_snapshot) AS cost,
+                        SUM(si.quantity * (si.unit_price_snapshot - si.cost_price_snapshot)) AS profit
+                    FROM sale_items si
+                    GROUP BY si.sale_id
+                ) sa ON sa.sale_id = s.id
+                WHERE s.organization_id = :organizationId
+                """;
+        String sql = safeDays == null
+                ? sqlBase + """
+                GROUP BY c.id, c.name
+                ORDER BY revenue DESC, client_name
+                LIMIT :limit
+                """
+                : sqlBase + """
+                  AND s.sold_at >= :dateFrom
+                GROUP BY c.id, c.name
+                ORDER BY revenue DESC, client_name
+                LIMIT :limit
+                """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("organizationId", organizationId)
+                .addValue("limit", safeLimit);
+        if (safeDays != null) {
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) -> new ClienteRentabilidadRowResponse(
+                rs.getLong("client_id"),
+                rs.getString("client_name"),
+                rs.getInt("sales_count"),
+                rs.getInt("units_sold"),
+                rs.getBigDecimal("revenue"),
+                rs.getBigDecimal("cost"),
+                rs.getBigDecimal("profit"),
+                rs.getBigDecimal("margin"),
+                rs.getTimestamp("last_sale_at").toLocalDateTime(),
+                rs.getBigDecimal("avg_ticket")
+        ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProveedorPerformanceRowResponse> proveedoresPerformance(int days, int limit) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        Integer safeDays = normalizeDays(days);
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+
+        String sqlBase = """
+                SELECT
+                    p.id AS provider_id,
+                    p.name AS provider_name,
+                    COUNT(po.id) AS order_count,
+                    ROUND(SUM(po.order_spend), 2) AS total_spend,
+                    ROUND(AVG(
+                        CASE
+                            WHEN po.received_at IS NULL THEN NULL
+                            ELSE DATEDIFF(po.received_at, po.created_at)
+                        END
+                    ), 2) AS avg_lead_time_days,
+                    CASE
+                        WHEN SUM(CASE WHEN po.received_at IS NOT NULL THEN 1 ELSE 0 END) = 0 THEN 0
+                        ELSE ROUND(
+                            (
+                                SUM(
+                                    CASE
+                                        WHEN po.received_at IS NOT NULL
+                                         AND po.received_at <= TIMESTAMP(po.desired_arrival_date, '23:59:59')
+                                        THEN 1 ELSE 0
+                                    END
+                                ) * 100.0
+                            ) / SUM(CASE WHEN po.received_at IS NOT NULL THEN 1 ELSE 0 END),
+                            2
+                        )
+                    END AS on_time_pct,
+                    MAX(po.created_at) AS last_order_at
+                FROM providers p
+                JOIN (
+                    SELECT
+                        po.id,
+                        po.provider_id,
+                        po.organization_id,
+                        po.created_at,
+                        po.desired_arrival_date,
+                        po.received_at,
+                        COALESCE(SUM(poi.quantity * poi.unit_price_snapshot), 0) AS order_spend
+                    FROM purchase_orders po
+                    LEFT JOIN purchase_order_items poi ON poi.order_id = po.id
+                    WHERE po.organization_id = :organizationId
+                    GROUP BY po.id, po.provider_id, po.organization_id, po.created_at, po.desired_arrival_date, po.received_at
+                ) po ON po.provider_id = p.id
+                WHERE p.organization_id = :organizationId
+                """;
+        String sql = safeDays == null
+                ? sqlBase + """
+                GROUP BY p.id, p.name
+                ORDER BY total_spend DESC, provider_name
+                LIMIT :limit
+                """
+                : sqlBase + """
+                  AND po.created_at >= :dateFrom
+                GROUP BY p.id, p.name
+                ORDER BY total_spend DESC, provider_name
+                LIMIT :limit
+                """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("organizationId", organizationId)
+                .addValue("limit", safeLimit);
+        if (safeDays != null) {
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) -> new ProveedorPerformanceRowResponse(
+                rs.getLong("provider_id"),
+                rs.getString("provider_name"),
+                rs.getInt("order_count"),
+                rs.getBigDecimal("total_spend"),
+                rs.getBigDecimal("avg_lead_time_days"),
+                rs.getBigDecimal("on_time_pct"),
+                rs.getTimestamp("last_order_at").toLocalDateTime()
+        ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AlertaSerieRowResponse> alertasSerie(int days) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ZoneId zone = resolveUserZone();
+        String userTimeZone = zone.getId();
+        Integer safeDays = normalizeDays(days);
+
+        String sql = """
+                SELECT
+                    t.bucket_date,
+                    t.alert_type,
+                    SUM(t.created_count) AS created_count,
+                    SUM(t.resolved_count) AS resolved_count
+                FROM (
+                    SELECT
+                        DATE(CONVERT_TZ(sa.created_at, '+00:00', :userTz)) AS bucket_date,
+                        sa.alert_type,
+                        COUNT(*) AS created_count,
+                        0 AS resolved_count
+                    FROM stock_alerts sa
+                    WHERE sa.organization_id = :organizationId
+                    %s
+                    GROUP BY DATE(CONVERT_TZ(sa.created_at, '+00:00', :userTz)), sa.alert_type
+
+                    UNION ALL
+
+                    SELECT
+                        DATE(CONVERT_TZ(sa.resolved_at, '+00:00', :userTz)) AS bucket_date,
+                        sa.alert_type,
+                        0 AS created_count,
+                        COUNT(*) AS resolved_count
+                    FROM stock_alerts sa
+                    WHERE sa.organization_id = :organizationId
+                      AND sa.resolved_at IS NOT NULL
+                    %s
+                    GROUP BY DATE(CONVERT_TZ(sa.resolved_at, '+00:00', :userTz)), sa.alert_type
+                ) t
+                GROUP BY t.bucket_date, t.alert_type
+                ORDER BY t.bucket_date, t.alert_type
+                """.formatted(
+                safeDays == null ? "" : "AND sa.created_at >= :dateFrom",
+                safeDays == null ? "" : "AND sa.resolved_at >= :dateFrom"
+        );
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("organizationId", organizationId)
+                .addValue("userTz", userTimeZone);
+        if (safeDays != null) {
+            params.addValue("dateFrom", toUtcStartOfDayTimestamp(zone, safeDays));
+        }
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) -> new AlertaSerieRowResponse(
+                rs.getDate("bucket_date").toLocalDate(),
+                rs.getString("alert_type"),
+                rs.getLong("created_count"),
+                rs.getLong("resolved_count")
         ));
     }
 
