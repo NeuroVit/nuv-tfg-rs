@@ -114,15 +114,29 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthTokens login(AuthRequest.Login request) {
+        String identifier = request.username() == null ? "" : request.username().trim();
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.username(), request.password())
+                    new UsernamePasswordAuthenticationToken(identifier, request.password())
             );
         } catch (AuthenticationException ex) {
+            usuarioRepository.findByUsername(identifier)
+                    .or(() -> usuarioRepository.findByEmail(identifier))
+                    .ifPresentOrElse(
+                            user -> log.warn(
+                                    "Login fallido para usuario existente: input={}, resolvedUsername={}, active={}, mustChangePassword={}",
+                                    identifier,
+                                    user.getUsername(),
+                                    user.getActive(),
+                                    user.getMustChangePassword()
+                            ),
+                            () -> log.warn("Login fallido: no existe usuario para input={}", identifier)
+                    );
             throw new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR, ex);
         }
 
-        var usuario = usuarioRepository.findByUsername(request.username())
+        var usuario = usuarioRepository.findByUsername(identifier)
+                .or(() -> usuarioRepository.findByEmail(identifier))
                 .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
 
         log.info("Login exitoso");
