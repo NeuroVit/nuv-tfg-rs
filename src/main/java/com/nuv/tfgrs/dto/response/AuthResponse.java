@@ -5,5 +5,6 @@ public record AuthResponse(
     String username,
     String role,
     long expiresIn,
-    boolean mustChangePassword
+    boolean mustChangePassword,
+    String timeZone
 ) {}

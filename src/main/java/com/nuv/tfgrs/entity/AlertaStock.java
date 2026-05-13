@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
  
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
  
 @Entity
 @Table(name = "stock_alerts")
@@ -45,7 +46,7 @@ public class AlertaStock {
  
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(ZoneOffset.UTC);
         resolved = false;
     }
  

@@ -52,7 +52,10 @@ public class AuthRequest {
         String apellidos,
 
         @NotBlank @Email
-        String email
+        String email,
+
+        @Pattern(regexp = "^[A-Za-z0-9/_+-]{1,64}$")
+        String timeZone
     ) {}
 
     public record ChangePasswordRequest(

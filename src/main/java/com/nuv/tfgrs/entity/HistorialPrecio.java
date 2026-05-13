@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
  
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
  
 @Entity
 @Table(name = "price_history")
@@ -43,7 +44,7 @@ public class HistorialPrecio {
  
     @PrePersist
     protected void onCreate() {
-        changedAt = LocalDateTime.now();
+        changedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 }
  

@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "stock_movements")
@@ -42,7 +43,7 @@ public class MovimientoStock {
 
     @PrePersist
     protected void onCreate() {
-        movedAt = LocalDateTime.now();
+        movedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
     public enum Reason {

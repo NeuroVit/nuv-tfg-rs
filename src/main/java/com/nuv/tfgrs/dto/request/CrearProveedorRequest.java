@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Email;
 
 public record CrearProveedorRequest(
         @NotBlank
-        @Size(max = 200)
+        @Size(max = 100, message = "El nombre no puede superar 100 caracteres")
         String nombre,
 
         @Email
@@ -20,7 +20,7 @@ public record CrearProveedorRequest(
         String ubicacionAlmacen,
 
         @NotNull
-        @Min(0)
+        @Min(value = 1, message = "Días de entrega debe ser mayor o igual a 1")
         Integer diasEntrega
 ) {
 }
