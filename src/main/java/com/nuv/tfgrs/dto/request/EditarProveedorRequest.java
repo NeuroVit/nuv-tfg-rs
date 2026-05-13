@@ -9,8 +9,8 @@ import jakarta.validation.constraints.Pattern;
 
 public record EditarProveedorRequest(
         @NotBlank
-        @Size(max = 200)
         @Pattern(regexp = "^(?!.*\\d).+$", message = "El nombre no puede contener numeros")
+        @Size(max = 100, message = "El nombre no puede superar 100 caracteres")
         String nombre,
 
         @NotBlank
@@ -23,7 +23,7 @@ public record EditarProveedorRequest(
         String ubicacionAlmacen,
 
         @NotNull
-        @Min(0)
+        @Min(value = 1, message = "Días de entrega debe ser mayor o igual a 1")
         Integer diasEntrega
 ) {
 }

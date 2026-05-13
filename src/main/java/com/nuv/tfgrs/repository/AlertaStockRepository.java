@@ -11,6 +11,10 @@ import java.util.List;
 public interface AlertaStockRepository extends JpaRepository<AlertaStock, Long> {
     List<AlertaStock> findByOrganizationIdAndResolvedFalseOrderByCreatedAtDesc(Long organizationId);
     List<AlertaStock> findByOrganizationIdAndResolvedTrueOrderByCreatedAtDesc(Long organizationId);
+    List<AlertaStock> findByOrganizationIdAndAlertTypeAndResolvedFalseOrderByCreatedAtDesc(
+            Long organizationId,
+            AlertType alertType
+    );
     List<AlertaStock> findByOrganizationIdAndProductIdOrderByCreatedAtDesc(Long organizationId, Long productId);
     List<AlertaStock> findByOrganizationIdAndProductIdAndResolvedFalse(Long organizationId, Long productId);
     boolean existsByOrganizationIdAndProductIdAndAlertTypeAndResolvedFalse(

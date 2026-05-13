@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
  
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
  
 @Entity
@@ -38,6 +39,6 @@ public class Categoria {
  
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 }
