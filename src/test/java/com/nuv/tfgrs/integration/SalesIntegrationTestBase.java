@@ -191,7 +191,7 @@ public abstract class SalesIntegrationTestBase {
 
     protected List<SaleItemDbRow> fetchSaleItems(long saleId) {
         String sql = """
-                SELECT product_id, quantity, list_unit_price_snapshot, discount_pct_snapshot, unit_price_snapshot, cost_price_snapshot
+                SELECT product_id, bundle_id, quantity, list_unit_price_snapshot, discount_pct_snapshot, unit_price_snapshot, cost_price_snapshot
                 FROM sale_items
                 WHERE sale_id = :saleId
                 ORDER BY product_id
@@ -200,6 +200,7 @@ public abstract class SalesIntegrationTestBase {
         return jdbcTemplate.query(sql, new MapSqlParameterSource("saleId", saleId), (rs, rowNum) ->
                 new SaleItemDbRow(
                         rs.getLong("product_id"),
+                        rs.getObject("bundle_id") == null ? null : rs.getLong("bundle_id"),
                         rs.getInt("quantity"),
                         rs.getBigDecimal("list_unit_price_snapshot"),
                         rs.getBigDecimal("discount_pct_snapshot"),
@@ -310,6 +311,13 @@ public abstract class SalesIntegrationTestBase {
             Assertions.assertNotNull(dbItem, "Item API sin correlación en DB para productId=" + productId);
 
             Assertions.assertEquals(dbItem.quantity(), apiItem.path("quantity").asInt(), "quantity API/DB debe coincidir");
+            if (dbItem.bundleId() == null) {
+                Assertions.assertTrue(apiItem.path("bundleId").isMissingNode() || apiItem.path("bundleId").isNull(),
+                        "bundleId API debe ser null si DB es null");
+            } else {
+                Assertions.assertEquals(dbItem.bundleId(), apiItem.path("bundleId").asLong(),
+                        "bundleId API/DB debe coincidir");
+            }
             assertMoneyEquals(dbItem.listUnitPriceSnapshot(), asMoney(apiItem, "listUnitPriceSnapshot"), "list unit API/DB debe coincidir");
             assertMoneyEquals(dbItem.discountPctSnapshot(), asMoney(apiItem, "discountPctSnapshot"), "discount pct API/DB debe coincidir");
             assertMoneyEquals(dbItem.unitPriceSnapshot(), asMoney(apiItem, "unitPriceSnapshot"), "unit net API/DB debe coincidir");
@@ -377,6 +385,7 @@ public abstract class SalesIntegrationTestBase {
 
     protected record SaleItemDbRow(
             long productId,
+            Long bundleId,
             int quantity,
             BigDecimal listUnitPriceSnapshot,
             BigDecimal discountPctSnapshot,

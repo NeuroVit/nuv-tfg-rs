@@ -1,11 +1,15 @@
 package com.nuv.tfgrs.controller;
 
 import com.nuv.tfgrs.dto.response.BundleCandidateRowResponse;
+import com.nuv.tfgrs.dto.response.BundlePerformanceRowResponse;
+import com.nuv.tfgrs.dto.response.ClienteRentabilidadRowResponse;
 import com.nuv.tfgrs.dto.response.FinanzasResumenResponse;
 import com.nuv.tfgrs.dto.response.InventorySummaryRowResponse;
+import com.nuv.tfgrs.dto.response.AlertaSerieRowResponse;
 import com.nuv.tfgrs.dto.response.AnaliticaMetaResponse;
 import com.nuv.tfgrs.dto.response.PriceTrendRowResponse;
 import com.nuv.tfgrs.dto.response.ProductCreationRowResponse;
+import com.nuv.tfgrs.dto.response.ProveedorPerformanceRowResponse;
 import com.nuv.tfgrs.dto.response.RentabilidadProductoRowResponse;
 import com.nuv.tfgrs.dto.response.RevenueComparativaResponse;
 import com.nuv.tfgrs.dto.response.SalesVelocityRowResponse;
@@ -117,6 +121,41 @@ public class AnaliticaController {
             @RequestParam(name = "limit", defaultValue = "12") int limit
     ) {
         return ResponseEntity.ok(analiticaService.rentabilidadProductos(days, limit));
+    }
+
+    @GetMapping("/bundles-performance")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<BundlePerformanceRowResponse>> bundlesPerformance(
+            @RequestParam(name = "days", defaultValue = "30") int days,
+            @RequestParam(name = "limit", defaultValue = "20") int limit
+    ) {
+        return ResponseEntity.ok(analiticaService.bundlesPerformance(days, limit));
+    }
+
+    @GetMapping("/clientes-rentabilidad")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ClienteRentabilidadRowResponse>> clientesRentabilidad(
+            @RequestParam(name = "days", defaultValue = "30") int days,
+            @RequestParam(name = "limit", defaultValue = "20") int limit
+    ) {
+        return ResponseEntity.ok(analiticaService.clientesRentabilidad(days, limit));
+    }
+
+    @GetMapping("/proveedores-performance")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ProveedorPerformanceRowResponse>> proveedoresPerformance(
+            @RequestParam(name = "days", defaultValue = "90") int days,
+            @RequestParam(name = "limit", defaultValue = "20") int limit
+    ) {
+        return ResponseEntity.ok(analiticaService.proveedoresPerformance(days, limit));
+    }
+
+    @GetMapping("/alertas-serie")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<AlertaSerieRowResponse>> alertasSerie(
+            @RequestParam(name = "days", defaultValue = "30") int days
+    ) {
+        return ResponseEntity.ok(analiticaService.alertasSerie(days));
     }
 
     @GetMapping("/productos-creados")

@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -122,7 +123,8 @@ public class VentaServiceImpl implements VentaService {
                     item.quantity(),
                     product.getUnitPrice(),
                     lineDiscountPct,
-                    resolveUnitCost(product)
+                    resolveUnitCost(product),
+                    null
             ));
         }
 
@@ -144,7 +146,8 @@ public class VentaServiceImpl implements VentaService {
                         quantity,
                         product.getUnitPrice(),
                         bundleDiscountPct,
-                        resolveUnitCost(product)
+                        resolveUnitCost(product),
+                        bundle.id()
                 ));
             }
         }
@@ -199,9 +202,17 @@ public class VentaServiceImpl implements VentaService {
 
             ProductSaleAccumulator current = byProduct.computeIfAbsent(
                     candidate.productId(),
-                    ignored -> new ProductSaleAccumulator(candidate.productId(), candidate.unitListPrice(), candidate.unitCost())
+                    ignored -> new ProductSaleAccumulator(
+                            candidate.productId(),
+                            candidate.unitListPrice(),
+                            candidate.unitCost(),
+                            candidate.bundleId()
+                    )
             );
 
+            if (!Objects.equals(current.bundleId, candidate.bundleId())) {
+                current.bundleId = null;
+            }
             current.quantity += candidate.quantity();
             current.listAmount = current.listAmount.add(listAmount);
             current.netAmount = current.netAmount.add(netAmount);
@@ -241,6 +252,7 @@ public class VentaServiceImpl implements VentaService {
 
             result.add(new SaleItemInsert(
                     row.productId,
+                    row.bundleId,
                     row.quantity,
                     listUnitPrice,
                     discountPct,
@@ -356,6 +368,7 @@ public class VentaServiceImpl implements VentaService {
                     sale_id,
                     organization_id,
                     product_id,
+                    bundle_id,
                     quantity,
                     list_unit_price_snapshot,
                     discount_pct_snapshot,
@@ -366,6 +379,7 @@ public class VentaServiceImpl implements VentaService {
                     :saleId,
                     :organizationId,
                     :productId,
+                    :bundleId,
                     :quantity,
                     :listUnitPrice,
                     :discountPct,
@@ -379,6 +393,7 @@ public class VentaServiceImpl implements VentaService {
                         .addValue("saleId", saleId)
                         .addValue("organizationId", organizationId)
                         .addValue("productId", row.productId())
+                        .addValue("bundleId", row.bundleId())
                         .addValue("quantity", row.quantity())
                         .addValue("listUnitPrice", row.listUnitPrice())
                         .addValue("discountPct", row.discountPct())
@@ -619,6 +634,8 @@ public class VentaServiceImpl implements VentaService {
                 SELECT
                     si.sale_id,
                     si.product_id,
+                    si.bundle_id,
+                    b.name AS bundle_name,
                     p.name AS product_name,
                     p.sku,
                     si.quantity,
@@ -627,6 +644,9 @@ public class VentaServiceImpl implements VentaService {
                     si.unit_price_snapshot
                 FROM sale_items si
                 JOIN products p ON p.id = si.product_id
+                LEFT JOIN bundles b
+                  ON b.id = si.bundle_id
+                 AND b.organization_id = si.organization_id
                 WHERE si.sale_id IN (:saleIds)
                   AND si.organization_id = :organizationId
                 ORDER BY p.name
@@ -639,6 +659,7 @@ public class VentaServiceImpl implements VentaService {
         for (Map<String, Object> row : rows) {
             Long saleId = ((Number) row.get("sale_id")).longValue();
             Long productId = ((Number) row.get("product_id")).longValue();
+            Long bundleId = asLong(row.get("bundle_id"));
             Integer quantity = ((Number) row.get("quantity")).intValue();
             BigDecimal listUnitPrice = asBigDecimal(row.get("list_unit_price_snapshot"));
             BigDecimal discountPct = asBigDecimal(row.get("discount_pct_snapshot"));
@@ -646,6 +667,8 @@ public class VentaServiceImpl implements VentaService {
 
             grouped.computeIfAbsent(saleId, ignored -> new ArrayList<>()).add(new VentaItemResponse(
                     productId,
+                    bundleId,
+                    (String) row.get("bundle_name"),
                     (String) row.get("product_name"),
                     (String) row.get("sku"),
                     quantity,
@@ -710,7 +733,8 @@ public class VentaServiceImpl implements VentaService {
             Integer quantity,
             BigDecimal unitListPrice,
             BigDecimal lineDiscountPct,
-            BigDecimal unitCost
+            BigDecimal unitCost,
+            Long bundleId
     ) {
     }
 
@@ -744,19 +768,22 @@ public class VentaServiceImpl implements VentaService {
         private final Long productId;
         private final BigDecimal unitListPrice;
         private final BigDecimal unitCost;
+        private Long bundleId;
         private int quantity = 0;
         private BigDecimal listAmount = BigDecimal.ZERO;
         private BigDecimal netAmount = BigDecimal.ZERO;
 
-        private ProductSaleAccumulator(Long productId, BigDecimal unitListPrice, BigDecimal unitCost) {
+        private ProductSaleAccumulator(Long productId, BigDecimal unitListPrice, BigDecimal unitCost, Long bundleId) {
             this.productId = productId;
             this.unitListPrice = unitListPrice;
             this.unitCost = unitCost;
+            this.bundleId = bundleId;
         }
     }
 
     private record SaleItemInsert(
             Long productId,
+            Long bundleId,
             Integer quantity,
             BigDecimal listUnitPrice,
             BigDecimal discountPct,

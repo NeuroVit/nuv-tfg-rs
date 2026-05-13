@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 
 public record VentaItemResponse(
         Long productId,
+        Long bundleId,
+        String bundleName,
         String productoNombre,
         String sku,
         Integer quantity,

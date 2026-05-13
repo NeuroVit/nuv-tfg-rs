@@ -60,6 +60,36 @@ class VentasApiIntegrationTest extends SalesIntegrationTestBase {
     }
 
     @Test
+    void createSale_withBundleOnly_shouldPersistAndReturnBundleId() throws Exception {
+        Long clientId = insertClient(true);
+
+        Map<String, Object> payload = salePayload(
+                clientId,
+                List.of(),
+                List.of(bundleItem(1L, 1, null)),
+                null,
+                "bundle-id-roundtrip"
+        );
+
+        CreatedSale created = createSaleExpectCreated(payload);
+        List<SaleItemDbRow> rows = fetchSaleItems(created.saleId());
+        assertFalse(rows.isEmpty());
+        assertTrue(rows.stream().anyMatch(row -> row.bundleId() != null),
+                "al menos una línea debe conservar bundle_id");
+
+        JsonNode items = created.body().path("items");
+        assertTrue(items.isArray());
+        boolean hasBundleId = false;
+        for (JsonNode item : items) {
+            if (item.hasNonNull("bundleId")) {
+                hasBundleId = true;
+                break;
+            }
+        }
+        assertTrue(hasBundleId, "la respuesta debe exponer bundleId en al menos una línea");
+    }
+
+    @Test
     void createSale_withPerLineDiscount_shouldPersistDiscountSnapshots() throws Exception {
         Long clientId = insertClient(true);
         long productId = 7L;
