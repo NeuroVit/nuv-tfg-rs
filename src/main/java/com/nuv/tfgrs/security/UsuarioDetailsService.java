@@ -24,8 +24,9 @@ public class UsuarioDetailsService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         var usuario = usuarioRepository.findByUsername(username)
+                .or(() -> usuarioRepository.findByEmail(username))
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado: " + username));
-        return new MembershipUserDetails(usuario, resolveAuthorities(username));
+        return new MembershipUserDetails(usuario, resolveAuthorities(usuario.getUsername()));
     }
 
     private List<? extends GrantedAuthority> resolveAuthorities(String username) {
