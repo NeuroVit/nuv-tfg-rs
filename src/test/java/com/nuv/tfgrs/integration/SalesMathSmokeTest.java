@@ -14,17 +14,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Tag("sales-smoke")
 @Tag("sales-verification")
-@WithMockUser(username = "admin", roles = {"ADMIN"})
+@WithMockUser(username = "nova_admin", roles = {"ADMIN"})
 class SalesMathSmokeTest extends SalesIntegrationTestBase {
 
     @Test
     void smoke_mixedSaleAndAnalytics_shouldStayBusinessConsistent() throws Exception {
         Long clientId = insertClient(true);
+        long bundleId = bundleIdWithMinComponentStock(1);
+        long directProductId = productIdWithMinStockExcluding(3, productIdsInBundle(bundleId));
 
         Map<String, Object> payload = salePayload(
                 clientId,
-                List.of(directItem(9L, 3, new BigDecimal("6.00"))),
-                List.of(bundleItem(1L, 1, null)),
+                List.of(directItem(directProductId, 3, new BigDecimal("6.00"))),
+                List.of(bundleItem(bundleId, 1, null)),
                 new BigDecimal("2.00"),
                 "smoke-mixed-sale"
         );
@@ -43,10 +45,12 @@ class SalesMathSmokeTest extends SalesIntegrationTestBase {
     @Test
     void smoke_invalidStock_shouldReturnConflict() throws Exception {
         Long clientId = insertClient(true);
+        long productId = productIdWithMinStock(1);
+        int excessiveQuantity = Math.toIntExact(currentStock(productId) + 1L);
 
         Map<String, Object> payload = salePayload(
                 clientId,
-                List.of(directItem(17L, 99999, null)),
+                List.of(directItem(productId, excessiveQuantity, null)),
                 List.of(),
                 null,
                 "smoke-invalid-stock"

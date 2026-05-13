@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -68,7 +69,7 @@ public abstract class SalesIntegrationTestBase {
         return key.longValue();
     }
 
-    private Long currentOrganizationIdForTestUser() {
+    protected Long currentOrganizationIdForTestUser() {
         String username = SecurityContextHolder.getContext().getAuthentication() != null
                 ? SecurityContextHolder.getContext().getAuthentication().getName()
                 : null;
@@ -96,6 +97,99 @@ public abstract class SalesIntegrationTestBase {
         );
         Assertions.assertNotNull(fallback, "No existe organización de prueba");
         return fallback;
+    }
+
+    protected long productIdWithMinStock(int minStock) {
+        Long organizationId = currentOrganizationIdForTestUser();
+        Long productId = jdbcTemplate.queryForObject(
+                """
+                SELECT p.id
+                FROM products p
+                WHERE p.organization_id = :organizationId
+                  AND p.current_quantity >= :minStock
+                ORDER BY p.current_quantity DESC, p.id
+                LIMIT 1
+                """,
+                new MapSqlParameterSource()
+                        .addValue("organizationId", organizationId)
+                        .addValue("minStock", minStock),
+                Long.class
+        );
+        Assertions.assertNotNull(productId, "No hay productos con stock suficiente para la prueba");
+        return productId;
+    }
+
+    protected long productIdWithMinStockExcluding(int minStock, Set<Long> excludedProductIds) {
+        if (excludedProductIds == null || excludedProductIds.isEmpty()) {
+            return productIdWithMinStock(minStock);
+        }
+
+        Long organizationId = currentOrganizationIdForTestUser();
+        Long productId = jdbcTemplate.queryForObject(
+                """
+                SELECT p.id
+                FROM products p
+                WHERE p.organization_id = :organizationId
+                  AND p.current_quantity >= :minStock
+                  AND p.id NOT IN (:excludedProductIds)
+                ORDER BY p.current_quantity DESC, p.id
+                LIMIT 1
+                """,
+                new MapSqlParameterSource()
+                        .addValue("organizationId", organizationId)
+                        .addValue("minStock", minStock)
+                        .addValue("excludedProductIds", excludedProductIds),
+                Long.class
+        );
+        Assertions.assertNotNull(productId, "No hay productos disponibles fuera del bundle seleccionado");
+        return productId;
+    }
+
+    protected long bundleIdWithMinComponentStock(int bundleQuantity) {
+        Long organizationId = currentOrganizationIdForTestUser();
+        Long bundleId = jdbcTemplate.queryForObject(
+                """
+                SELECT b.id
+                FROM bundles b
+                JOIN bundle_items bi
+                  ON bi.bundle_id = b.id
+                 AND bi.organization_id = b.organization_id
+                JOIN products p
+                  ON p.id = bi.product_id
+                 AND p.organization_id = bi.organization_id
+                WHERE b.organization_id = :organizationId
+                  AND b.active = 1
+                GROUP BY b.id
+                HAVING SUM(CASE WHEN p.current_quantity >= (bi.quantity * :bundleQuantity) THEN 0 ELSE 1 END) = 0
+                ORDER BY b.id
+                LIMIT 1
+                """,
+                new MapSqlParameterSource()
+                        .addValue("organizationId", organizationId)
+                        .addValue("bundleQuantity", bundleQuantity),
+                Long.class
+        );
+        Assertions.assertNotNull(bundleId, "No hay bundles activos con stock suficiente para la prueba");
+        return bundleId;
+    }
+
+    protected Set<Long> productIdsInBundle(long bundleId) {
+        Long organizationId = currentOrganizationIdForTestUser();
+        List<Long> productIds = jdbcTemplate.query(
+                """
+                SELECT bi.product_id
+                FROM bundle_items bi
+                WHERE bi.organization_id = :organizationId
+                  AND bi.bundle_id = :bundleId
+                ORDER BY bi.product_id
+                """,
+                new MapSqlParameterSource()
+                        .addValue("organizationId", organizationId)
+                        .addValue("bundleId", bundleId),
+                (rs, rowNum) -> rs.getLong("product_id")
+        );
+        Assertions.assertFalse(productIds.isEmpty(), "El bundle seleccionado no tiene productos asociados");
+        return Set.copyOf(productIds);
     }
 
     protected Map<String, Object> directItem(long productId, int quantity, BigDecimal descuentoPct) {
