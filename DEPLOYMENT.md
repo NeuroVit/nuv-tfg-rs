@@ -45,6 +45,7 @@ JWT_REFRESH_COOKIE_SECURE=true
 GOOGLE_CLIENT_ID=<google-oauth-client-id>
 
 CORS_ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:5173
+CORS_ALLOWED_ORIGIN_PATTERNS=https://*.up.railway.app
 ```
 
 Notes:
@@ -87,6 +88,7 @@ Set `CORS_ALLOWED_ORIGINS` as comma-separated origins, for example:
 
 ```env
 CORS_ALLOWED_ORIGINS=http://localhost:5173,https://your-frontend.vercel.app,https://app.yourdomain.com
+CORS_ALLOWED_ORIGIN_PATTERNS=https://*.up.railway.app
 ```
 
 Do not use `*` when credentials/cookies are enabled.
