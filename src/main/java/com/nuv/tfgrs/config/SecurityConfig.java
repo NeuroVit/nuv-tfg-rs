@@ -85,8 +85,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/auth/google/verify").permitAll()
+                .requestMatchers("/", "/index.html", "/favicon.ico", "/error").permitAll()
+                .requestMatchers("/assets/**").permitAll()
                 .requestMatchers("/health").permitAll()
-                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
