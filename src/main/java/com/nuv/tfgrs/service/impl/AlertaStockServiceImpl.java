@@ -22,6 +22,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class AlertaStockServiceImpl implements AlertaStockService {
+    private static final String BELOW_COST_MARKER = "por debajo del coste";
 
     private final AlertaStockRepository alertaStockRepository;
     private final ProductoRepository productoRepository;
@@ -108,6 +109,8 @@ public class AlertaStockServiceImpl implements AlertaStockService {
 
         LocalDateTime now = LocalDateTime.now();
         for (AlertaStock alert : openPriceAnomalyAlerts) {
+            String message = alert.getMessage() == null ? "" : alert.getMessage().toLowerCase();
+            if (!message.contains(BELOW_COST_MARKER)) continue;
             if (anomalyProductIds.contains(alert.getProduct().getId())) continue;
             alert.setResolved(true);
             alert.setResolvedAt(now);

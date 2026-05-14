@@ -30,7 +30,7 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
             FROM Producto p
             WHERE p.organizationId = :organizationId
               AND p.acquisitionPrice IS NOT NULL
-              AND p.unitPrice < p.acquisitionPrice
+              AND p.unitPrice <= p.acquisitionPrice
             """)
     List<Producto> findPriceAnomalyProductsByOrganizationId(@Param("organizationId") Long organizationId);
 }

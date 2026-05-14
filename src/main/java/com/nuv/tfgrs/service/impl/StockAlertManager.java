@@ -90,7 +90,7 @@ public class StockAlertManager {
         BigDecimal acquisitionPrice = producto.getAcquisitionPrice();
         boolean hasPriceAnomaly = unitPrice != null
                 && acquisitionPrice != null
-                && unitPrice.compareTo(acquisitionPrice) < 0;
+                && unitPrice.compareTo(acquisitionPrice) <= 0;
 
         if (hasPriceAnomaly) {
             createIfMissing(
