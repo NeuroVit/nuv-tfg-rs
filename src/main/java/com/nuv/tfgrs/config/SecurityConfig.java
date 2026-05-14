@@ -47,6 +47,9 @@ public class SecurityConfig {
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
 
+    @Value("${cors.allowed-origin-patterns:tauri://*,http://tauri.localhost,https://tauri.localhost}")
+    private String allowedOriginPatterns;
+
     @PostConstruct
     void logResolvedCorsOrigins() {
         log.info(
@@ -82,8 +85,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/auth/google/verify").permitAll()
+                .requestMatchers("/", "/index.html", "/favicon.ico", "/error").permitAll()
+                .requestMatchers("/assets/**").permitAll()
                 .requestMatchers("/health").permitAll()
-                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
@@ -134,11 +139,10 @@ public class SecurityConfig {
     }
 
     private List<String> resolveAllowedOriginPatterns() {
-        return List.of(
-                "tauri://*",
-                "http://tauri.localhost",
-                "https://tauri.localhost"
-        );
+        return Arrays.stream(allowedOriginPatterns.split(","))
+                .map(String::trim)
+                .filter(pattern -> !pattern.isBlank())
+                .toList();
     }
 
     @Bean
