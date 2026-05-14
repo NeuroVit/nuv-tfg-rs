@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 @Component
@@ -33,7 +34,8 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     private static final String CHANGE_PASSWORD_PATH = "/api/auth/change-password";
     private static final String GOOGLE_MOBILE_CREDENTIAL_PATH = "/api/auth/google/mobile/credential";
 
-    private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> buckets = new ConcurrentHashMap<>();
+    private final AtomicLong requestCounter = new AtomicLong();
 
     @Value("${rate-limit.auth.login.capacity:10}")
     private long loginCapacity;
@@ -89,6 +91,15 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     @Value("${rate-limit.auth.google-mobile-credential.refill-seconds:60}")
     private long googleMobileCredentialRefillSeconds;
 
+    @Value("${rate-limit.auth.bucket-idle-ttl-seconds:1800}")
+    private long bucketIdleTtlSeconds;
+
+    @Value("${rate-limit.auth.max-buckets:10000}")
+    private int maxBuckets;
+
+    @Value("${rate-limit.auth.cleanup-interval-requests:200}")
+    private long cleanupIntervalRequests;
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -105,6 +116,8 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+
+        maybeCleanupBuckets();
 
         String clientId = resolveClientId(request);
         Bucket bucket = resolveBucket(path, clientId);
@@ -144,7 +157,54 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     }
 
     private Bucket resolveBucket(String path, String clientId) {
-        return buckets.computeIfAbsent(path + ":" + clientId, ignored -> buildBucket(path));
+        String key = path + ":" + clientId;
+        long now = System.currentTimeMillis();
+        BucketEntry entry = buckets.compute(key, (ignored, current) -> {
+            if (current == null) {
+                return new BucketEntry(buildBucket(path), now);
+            }
+            current.touch(now);
+            return current;
+        });
+        return entry.bucket();
+    }
+
+    private void maybeCleanupBuckets() {
+        long interval = Math.max(1L, cleanupIntervalRequests);
+        if (requestCounter.incrementAndGet() % interval != 0) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        long ttlMillis = Math.max(60L, bucketIdleTtlSeconds) * 1000L;
+        buckets.entrySet().removeIf(entry -> (now - entry.getValue().lastSeenEpochMs()) > ttlMillis);
+
+        int allowedBuckets = Math.max(100, maxBuckets);
+        if (buckets.size() <= allowedBuckets) {
+            return;
+        }
+
+        trimOldestBuckets(allowedBuckets);
+    }
+
+    private void trimOldestBuckets(int allowedBuckets) {
+        while (buckets.size() > allowedBuckets) {
+            String oldestKey = null;
+            long oldestSeen = Long.MAX_VALUE;
+
+            for (Map.Entry<String, BucketEntry> entry : buckets.entrySet()) {
+                long seen = entry.getValue().lastSeenEpochMs();
+                if (seen < oldestSeen) {
+                    oldestSeen = seen;
+                    oldestKey = entry.getKey();
+                }
+            }
+
+            if (oldestKey == null) {
+                return;
+            }
+            buckets.remove(oldestKey);
+        }
     }
 
     private Bucket buildBucket(String path) {
@@ -205,5 +265,27 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     private long safeValue(long value) {
         return value > 0 ? value : 1;
+    }
+
+    private static final class BucketEntry {
+        private final Bucket bucket;
+        private volatile long lastSeenEpochMs;
+
+        private BucketEntry(Bucket bucket, long lastSeenEpochMs) {
+            this.bucket = bucket;
+            this.lastSeenEpochMs = lastSeenEpochMs;
+        }
+
+        private Bucket bucket() {
+            return bucket;
+        }
+
+        private long lastSeenEpochMs() {
+            return lastSeenEpochMs;
+        }
+
+        private void touch(long timestamp) {
+            this.lastSeenEpochMs = timestamp;
+        }
     }
 }
