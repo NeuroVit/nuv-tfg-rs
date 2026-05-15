@@ -32,6 +32,7 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    validate-on-migrate: false
 
   ai:
     ollama:
@@ -102,6 +103,11 @@ rate-limit:
 analytics:
   seed:
     enabled: ${ANALYTICS_SEED_ENABLED:false}
+
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
+  price-id: ${STRIPE_PRICE_ID:price_placeholder}
 
 logging:
   level:

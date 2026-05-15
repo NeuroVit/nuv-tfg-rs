@@ -1,5 +1,6 @@
 package com.nuv.tfgrs.exception;
  
+import com.nuv.tfgrs.features.auth.exception.AuthException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;

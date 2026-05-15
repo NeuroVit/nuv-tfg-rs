@@ -1,0 +1,3 @@
+ALTER TABLE users
+    ADD COLUMN nombre   VARCHAR(50),
+    ADD COLUMN apellidos VARCHAR(100);

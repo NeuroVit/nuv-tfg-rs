@@ -1,0 +1,29 @@
+name: Backend Architecture Guardrails
+
+on:
+  pull_request:
+    branches: [dev, general]
+  push:
+    branches: [dev, general]
+
+jobs:
+  architecture-guardrails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Ensure Maven wrapper executable
+        run: chmod +x mvnw
+
+      - name: Run architecture guardrails
+        run: ./mvnw -q test -Dtest=ArchitectureGuardrailsTest
