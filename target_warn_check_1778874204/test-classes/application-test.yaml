@@ -1,0 +1,49 @@
+spring:
+  docker:
+    compose:
+      enabled: false
+  datasource:
+    url: ${TEST_DB_URL:jdbc:mysql://localhost:3306/stock_manager}
+    username: ${TEST_DB_USER:${DB_USER:${MYSQL_USER:nuv-tfg}}}
+    password: ${TEST_DB_PASSWORD:${DB_PASSWORD:${MYSQL_PASSWORD:0000}}}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+jwt:
+  secret: ${TEST_JWT_SECRET:test-jwt-secret-for-integration-tests-32-chars-minimum}
+  expiration-ms: 3600000
+  refresh-expiration-ms: 604800000
+  refresh-cookie-secure: false
+
+cors:
+  allowed-origins: http://localhost:5173
+
+auth:
+  debug:
+    google: false
+  role-switch:
+    enabled: true
+
+google:
+  client-id: test-google-client-id
+
+rate-limit:
+  auth:
+    login:
+      capacity: 1000
+      refill-tokens: 1000
+      refill-seconds: 60
+    register:
+      capacity: 1000
+      refill-tokens: 1000
+      refill-seconds: 60

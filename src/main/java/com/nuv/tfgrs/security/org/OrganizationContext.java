@@ -1,8 +1,8 @@
 package com.nuv.tfgrs.security.org;
 
-import com.nuv.tfgrs.entity.Organization;
-import com.nuv.tfgrs.entity.OrganizationMembership;
-import com.nuv.tfgrs.entity.Usuario;
+import com.nuv.tfgrs.features.organizaciones.entity.Organization;
+import com.nuv.tfgrs.features.organizaciones.entity.OrganizationMembership;
+import com.nuv.tfgrs.features.usuarios.entity.Usuario;
 
 public record OrganizationContext(
         Usuario currentUser,

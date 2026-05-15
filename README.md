@@ -1,80 +1,80 @@
 # nuv-tfg-rs
 
-Backend Spring Boot for Neurovit stock, sales, and analytics.
+Servicio en Spring Boot para inventario, ventas y analítica de Neurovit.
 
-## Sales verification suite (real DB, no UI)
+## Suite de verificación de ventas (BD real, sin UI)
 
-This repository includes integration tests for sales math and analytics inputs using:
-- real MySQL
-- Flyway migrations
-- MockMvc + Spring Security test context
-- transactional rollback isolation per test
+Este repositorio incluye pruebas de integración para matemáticas de ventas y entradas de analítica usando:
+- MySQL real
+- migraciones Flyway
+- MockMvc + contexto de pruebas de Spring Security
+- aislamiento por rollback transaccional en cada test
 
-## Prerequisites
+## Prerrequisitos
 
-1. Start MySQL from infra:
+1. Inicia MySQL desde infra:
 
 ```bash
 cd ../nuv-tfg-infra
 docker compose up -d
 ```
 
-Optional (only if working on AI/Ollama features):
+Opcional (solo si trabajas en funcionalidades de AI/Ollama):
 
 ```bash
 cd ../nuv-tfg-infra
 docker compose --profile ai up -d
 ```
 
-Backend startup should not auto-run Docker Compose. Keep `SPRING_DOCKER_COMPOSE_ENABLED=false`.
+El arranque del backend no debe ejecutar Docker Compose automáticamente. Mantén `SPRING_DOCKER_COMPOSE_ENABLED=false`.
 
-2. Ensure backend DB credentials are available (`.env`, exported env vars, or defaults).
+2. Asegura que las credenciales de BD del backend estén disponibles (`.env`, variables exportadas o valores por defecto).
 
-Default test fallbacks:
+Valores de fallback por defecto para tests:
 - `jdbc:mysql://localhost:3306/stock_manager`
-- user: `nuv-tfg`
-- password: `0000`
+- usuario: `nuv-tfg`
+- contraseña: `0000`
 
-Optional overrides for tests:
+Sobrescrituras opcionales para tests:
 - `TEST_DB_URL`
 - `TEST_DB_USER`
 - `TEST_DB_PASSWORD`
 - `TEST_JWT_SECRET`
 
-## Run commands
+## Comandos de ejecución
 
-Run full backend test suite:
+Ejecutar suite completa de tests backend:
 
 ```bash
 ./mvnw test
 ```
 
-Run sales verification tests only:
+Ejecutar solo tests de verificación de ventas:
 
 ```bash
 ./mvnw test -Dgroups=sales-verification
 ```
 
-Run smoke-only suite:
+Ejecutar solo suite de smoke:
 
 ```bash
 ./mvnw test -Dgroups=sales-smoke
 ```
 
-## What is covered
+## Qué está cubierto
 
-`VentasApiIntegrationTest` validates:
-- direct sales
-- bundle sales
-- per-line discount
-- global discount
-- mixed direct + bundles
-- insufficient stock (409)
-- inactive client (400)
-- duplicate direct product (400)
-- duplicate bundle (400)
-- stock decrement and SALE stock movements
-- financial consistency equations and snapshot coherence
-- analytics snapshot regression (`finanzas-resumen` margin fields)
+`VentasApiIntegrationTest` valida:
+- ventas directas
+- ventas con bundles
+- descuento por línea
+- descuento global
+- mezcla de directos + bundles
+- stock insuficiente (409)
+- cliente inactivo (400)
+- producto directo duplicado (400)
+- bundle duplicado (400)
+- decremento de stock y movimientos de stock tipo SALE
+- ecuaciones de consistencia financiera y coherencia de snapshots
+- regresión de snapshot analítico (`finanzas-resumen` campos de margen)
 
-`SalesMathSmokeTest` provides a representative real-DB smoke pass for business math.
+`SalesMathSmokeTest` aporta una pasada smoke representativa en BD real para matemáticas de negocio.

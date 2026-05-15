@@ -1,8 +1,8 @@
 package com.nuv.tfgrs.security;
 
-import com.nuv.tfgrs.entity.OrganizationMembership;
-import com.nuv.tfgrs.repository.OrganizationMembershipRepository;
-import com.nuv.tfgrs.repository.UsuarioRepository;
+import com.nuv.tfgrs.features.organizaciones.entity.OrganizationMembership;
+import com.nuv.tfgrs.features.organizaciones.repository.OrganizationMembershipRepository;
+import com.nuv.tfgrs.features.usuarios.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -29,13 +29,13 @@ public class UsuarioDetailsService implements UserDetailsService {
         return new MembershipUserDetails(usuario, resolveAuthorities(usuario.getUsername()));
     }
 
-    private List<? extends GrantedAuthority> resolveAuthorities(String username) {
+    private List<GrantedAuthority> resolveAuthorities(String username) {
         return organizationMembershipRepository.findByUserUsername(username)
                 .map(this::authoritiesFromMembership)
-                .orElseGet(() -> List.of(new SimpleGrantedAuthority("ROLE_VIEWER")));
+                .orElseGet(() -> List.<GrantedAuthority>of(new SimpleGrantedAuthority("ROLE_VIEWER")));
     }
 
-    private List<? extends GrantedAuthority> authoritiesFromMembership(OrganizationMembership membership) {
+    private List<GrantedAuthority> authoritiesFromMembership(OrganizationMembership membership) {
         List<GrantedAuthority> authorities = new ArrayList<>();
         switch (membership.getRole()) {
             case OWNER -> {

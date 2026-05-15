@@ -1,8 +1,8 @@
 package com.nuv.tfgrs.security.user;
 
-import com.nuv.tfgrs.entity.Usuario;
-import com.nuv.tfgrs.exception.AuthException;
-import com.nuv.tfgrs.repository.UsuarioRepository;
+import com.nuv.tfgrs.features.usuarios.entity.Usuario;
+import com.nuv.tfgrs.features.auth.exception.AuthException;
+import com.nuv.tfgrs.features.usuarios.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;

@@ -1,11 +1,11 @@
 package com.nuv.tfgrs.security.org;
 
-import com.nuv.tfgrs.entity.OrganizationMembership;
-import com.nuv.tfgrs.entity.OrganizationMembership.MembershipRole;
-import com.nuv.tfgrs.entity.Usuario;
-import com.nuv.tfgrs.exception.AuthException;
-import com.nuv.tfgrs.repository.OrganizationMembershipRepository;
-import com.nuv.tfgrs.repository.UsuarioRepository;
+import com.nuv.tfgrs.features.organizaciones.entity.OrganizationMembership;
+import com.nuv.tfgrs.features.organizaciones.entity.OrganizationMembership.MembershipRole;
+import com.nuv.tfgrs.features.usuarios.entity.Usuario;
+import com.nuv.tfgrs.features.auth.exception.AuthException;
+import com.nuv.tfgrs.features.organizaciones.repository.OrganizationMembershipRepository;
+import com.nuv.tfgrs.features.usuarios.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
