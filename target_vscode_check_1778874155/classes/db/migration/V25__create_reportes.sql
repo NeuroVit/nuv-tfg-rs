@@ -1,0 +1,11 @@
+CREATE TABLE reportes (
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    nombre      VARCHAR(255) NOT NULL,
+    tipo        VARCHAR(50)  NOT NULL,
+    descripcion TEXT,
+    parametros  TEXT,
+    datos       LONGTEXT,
+    generado_por VARCHAR(255),
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

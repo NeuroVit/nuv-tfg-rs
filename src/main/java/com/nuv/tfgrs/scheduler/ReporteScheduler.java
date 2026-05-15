@@ -1,10 +1,10 @@
 package com.nuv.tfgrs.scheduler;
 
-import com.nuv.tfgrs.dto.request.CrearReporteRequest;
-import com.nuv.tfgrs.entity.ReporteProgramado;
-import com.nuv.tfgrs.repository.ReporteProgramadoRepository;
-import com.nuv.tfgrs.service.ReporteService;
-import com.nuv.tfgrs.service.impl.ReporteProgramadoServiceImpl;
+import com.nuv.tfgrs.features.reportes.dto.request.CrearReporteRequest;
+import com.nuv.tfgrs.features.reportes.entity.ReporteProgramado;
+import com.nuv.tfgrs.features.reportes.repository.ReporteProgramadoRepository;
+import com.nuv.tfgrs.features.reportes.service.ReporteService;
+import com.nuv.tfgrs.features.reportes.service.impl.ReporteProgramadoServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
