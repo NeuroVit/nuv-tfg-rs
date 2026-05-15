@@ -33,4 +33,7 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
               AND p.unitPrice < p.acquisitionPrice
             """)
     List<Producto> findPriceAnomalyProductsByOrganizationId(@Param("organizationId") Long organizationId);
+
+    @Query("SELECT p FROM Producto p WHERE p.currentQuantity < p.minimumStockLevel")
+    List<Producto> findLowStockProducts();
 }

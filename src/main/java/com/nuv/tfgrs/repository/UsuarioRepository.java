@@ -15,4 +15,5 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     boolean existsByEmail(String email);
     Optional<Usuario> findByGoogleId(String googleId);
     List<Usuario> findAllByOrderByUsernameAsc();
+    Optional<Usuario> findByStripeCustomerId(String stripeCustomerId);
 }

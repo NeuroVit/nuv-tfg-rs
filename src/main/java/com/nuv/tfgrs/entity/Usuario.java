@@ -72,6 +72,15 @@ public class Usuario implements UserDetails, TokenVersionAware {
     @Column(name = "time_zone", nullable = false, length = 64)
     private String timeZone;
 
+    @Column(name = "stripe_customer_id")
+    private String stripeCustomerId;
+
+    @Column(name = "subscription_id")
+    private String subscriptionId;
+
+    @Column(name = "subscription_status", nullable = false, length = 20)
+    private String subscriptionStatus;
+
     // Also make password nullable:
     //@Column(nullable = true)
     //private String password;
@@ -91,6 +100,9 @@ public class Usuario implements UserDetails, TokenVersionAware {
         }
         if (timeZone == null || timeZone.isBlank()) {
             timeZone = DEFAULT_TIME_ZONE;
+        }
+        if (subscriptionStatus == null) {
+            subscriptionStatus = "INACTIVE";
         }
     }
  

@@ -24,4 +24,5 @@ public interface AlertaStockRepository extends JpaRepository<AlertaStock, Long> 
     );
     List<AlertaStock> findByOrganizationId(Long organizationId);
     java.util.Optional<AlertaStock> findByIdAndOrganizationId(Long id, Long organizationId);
+    List<AlertaStock> findByResolvedFalseOrderByCreatedAtDesc();
 }

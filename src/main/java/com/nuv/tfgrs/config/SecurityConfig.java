@@ -91,6 +91,7 @@ public class SecurityConfig {
                 .requestMatchers("/assets/**").permitAll()
                 .requestMatchers("/health").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                .requestMatchers("/api/billing/webhook").permitAll()
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
