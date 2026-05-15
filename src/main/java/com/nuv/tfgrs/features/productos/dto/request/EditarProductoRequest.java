@@ -13,6 +13,7 @@ public record EditarProductoRequest(
         @Positive BigDecimal costoUnitario,
         @PositiveOrZero Integer cantidadActual,
         @PositiveOrZero Integer nivelMinimoStock,
+        @PositiveOrZero Integer nivelMaximoStock,
         Long categoriaId,
         Long providerId
 ) {}

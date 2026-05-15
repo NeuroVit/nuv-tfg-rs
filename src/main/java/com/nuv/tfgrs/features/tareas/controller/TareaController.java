@@ -1,8 +1,10 @@
 package com.nuv.tfgrs.features.tareas.controller;
 
 import com.nuv.tfgrs.features.tareas.dto.request.ActualizarEstadoTareaRequest;
+import com.nuv.tfgrs.features.tareas.dto.request.ActualizarAsignadoTareaRequest;
 import com.nuv.tfgrs.features.tareas.dto.request.CrearTareaRequest;
 import com.nuv.tfgrs.features.common.dto.response.PagedResponse;
+import com.nuv.tfgrs.features.tareas.dto.response.TareaAsignableUsuarioResponse;
 import com.nuv.tfgrs.features.tareas.dto.response.TareaResumenResponse;
 import com.nuv.tfgrs.features.tareas.dto.response.TareaResponse;
 import com.nuv.tfgrs.features.tareas.service.TareaService;
@@ -11,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -55,14 +56,19 @@ public class TareaController {
         return ResponseEntity.ok(tareaService.resumen());
     }
 
+    @GetMapping("/asignables")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<TareaAsignableUsuarioResponse>> listarAsignables() {
+        return ResponseEntity.ok(tareaService.listarAsignables());
+    }
+
     @PostMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<TareaResponse> crear(
-            @Valid @RequestBody CrearTareaRequest request,
-            Authentication authentication
+            @Valid @RequestBody CrearTareaRequest request
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(tareaService.crear(request, authentication.getName()));
+                .body(tareaService.crear(request));
     }
 
     @PatchMapping("/{id}/estado")
@@ -72,6 +78,15 @@ public class TareaController {
             @Valid @RequestBody ActualizarEstadoTareaRequest request
     ) {
         return ResponseEntity.ok(tareaService.actualizarEstado(id, request));
+    }
+
+    @PatchMapping("/{id}/asignado")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<TareaResponse> actualizarAsignado(
+            @PathVariable Long id,
+            @Valid @RequestBody ActualizarAsignadoTareaRequest request
+    ) {
+        return ResponseEntity.ok(tareaService.actualizarAsignado(id, request));
     }
 
     @DeleteMapping("/{id}")

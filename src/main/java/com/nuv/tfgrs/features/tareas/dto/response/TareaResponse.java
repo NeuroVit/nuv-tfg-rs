@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 @Builder
 public class TareaResponse {
     private Long id;
+    private Long organizationId;
     private String titulo;
     private String descripcion;
     private String tipo;
@@ -19,6 +20,10 @@ public class TareaResponse {
     private String sku;
     private String alertaTipo;
     private String creadoPor;
+    private Long creadoPorUserId;
+    private Long asignadoAUserId;
+    private String asignadoAUsername;
+    private String asignadoANombre;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

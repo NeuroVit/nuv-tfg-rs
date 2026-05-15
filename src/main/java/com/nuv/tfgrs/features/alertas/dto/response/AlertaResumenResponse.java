@@ -4,6 +4,8 @@ public record AlertaResumenResponse(
         long abiertas,
         long stockBajo,
         long anomaliasPrecio,
-        long resueltasUltimos7Dias
+        long resueltasUltimos7Dias,
+        long criticas,
+        long anomalias
 ) {
 }

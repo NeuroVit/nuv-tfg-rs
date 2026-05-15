@@ -49,6 +49,10 @@ public class Producto {
     @Min(0)
     @Column(name = "minimum_stock_level", nullable = false)
     private Integer minimumStockLevel;
+
+    @Min(0)
+    @Column(name = "maximum_stock_level", nullable = false)
+    private Integer maximumStockLevel;
  
     @NotNull
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)

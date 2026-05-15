@@ -113,6 +113,8 @@ public class ProductoServiceImpl implements ProductoService {
         validarSkuDisponibleParaCrear(request.sku(), organizationId);
         Categoria categoria = findCategoriaOrThrowBadRequest(request.categoriaId(), organizationId);
         Proveedor proveedor = findProveedorActivoOrThrowBadRequest(request.providerId(), organizationId);
+        int minimumStock = request.nivelMinimoStock();
+        int maximumStock = resolveMaximumStockLevel(request.nivelMaximoStock(), minimumStock);
 
         var producto = Producto.builder()
                 .organizationId(organizationId)
@@ -120,7 +122,8 @@ public class ProductoServiceImpl implements ProductoService {
                 .sku(request.sku())
                 .description(request.descripcion())
                 .currentQuantity(request.cantidadActual())
-                .minimumStockLevel(request.nivelMinimoStock())
+                .minimumStockLevel(minimumStock)
+                .maximumStockLevel(maximumStock)
                 .unitPrice(request.precioUnitario())
                 .acquisitionPrice(request.costoUnitario())
                 .category(categoria)
@@ -128,6 +131,8 @@ public class ProductoServiceImpl implements ProductoService {
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
+
+        validateStockThresholds(producto.getMinimumStockLevel(), producto.getMaximumStockLevel());
 
         Producto saved = productoRepository.save(producto);
 
@@ -179,6 +184,9 @@ public class ProductoServiceImpl implements ProductoService {
         if (request.nivelMinimoStock() != null) {
             producto.setMinimumStockLevel(request.nivelMinimoStock());
         }
+        if (request.nivelMaximoStock() != null) {
+            producto.setMaximumStockLevel(request.nivelMaximoStock());
+        }
         if (request.precioUnitario() != null) {
             producto.setUnitPrice(request.precioUnitario());
         }
@@ -192,6 +200,7 @@ public class ProductoServiceImpl implements ProductoService {
             producto.setProvider(findProveedorActivoOrThrowBadRequest(request.providerId(), organizationId));
         }
         producto.setUpdatedAt(LocalDateTime.now());
+        validateStockThresholds(producto.getMinimumStockLevel(), producto.getMaximumStockLevel());
 
         Producto saved = productoRepository.save(producto);
         stockAlertManager.syncForProduct(saved);
@@ -429,6 +438,23 @@ public class ProductoServiceImpl implements ProductoService {
         }
 
         return result;
+    }
+
+    private int resolveMaximumStockLevel(Integer requestedMaximum, int minimumStockLevel) {
+        if (requestedMaximum != null) return requestedMaximum;
+        return Math.max(minimumStockLevel + 1, minimumStockLevel * 5);
+    }
+
+    private void validateStockThresholds(Integer minimumStockLevel, Integer maximumStockLevel) {
+        if (minimumStockLevel == null || maximumStockLevel == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Los niveles de stock mínimo y máximo son obligatorios");
+        }
+        if (maximumStockLevel < minimumStockLevel) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El stock máximo debe ser mayor o igual que el stock mínimo"
+            );
+        }
     }
 
     private String normalizeLikeSearch(String raw) {

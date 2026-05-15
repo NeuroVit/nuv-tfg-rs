@@ -17,12 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,11 +33,19 @@ class AlertaStockServiceImplTest {
     @Mock
     private ProductoRepository productoRepository;
 
+    @Mock
+    private StockAlertManager stockAlertManager;
+
     private AlertaStockServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new AlertaStockServiceImpl(alertaStockRepository, productoRepository, currentOrganizationResolver);
+        service = new AlertaStockServiceImpl(
+                alertaStockRepository,
+                productoRepository,
+                currentOrganizationResolver,
+                stockAlertManager
+        );
 
         Organization organization = new Organization();
         organization.setId(10L);
@@ -57,35 +61,17 @@ class AlertaStockServiceImplTest {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.resolver(1L));
 
         assertEquals(409, ex.getStatusCode().value());
-        assertTrue(ex.getReason().contains("No se puede resolver la alerta"));
+        assertTrue(ex.getReason().contains("se resuelven automáticamente"));
     }
 
     @Test
-    void resolverLowStockDebePermitirCuandoYaSeRepuso() {
-        AlertaStock alert = buildStockAlert(2L, AlertaStock.AlertType.LOW_STOCK, 8, 5);
+    void resolverSiempreDebeFallarPorqueLasAlertasSonAutomaticas() {
+        AlertaStock alert = buildStockAlert(2L, AlertaStock.AlertType.OVERSTOCK, 8, 5);
         when(alertaStockRepository.findByIdAndOrganizationId(2L, 10L)).thenReturn(Optional.of(alert));
-        when(alertaStockRepository.save(any(AlertaStock.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = service.resolver(2L);
-
-        assertTrue(alert.getResolved());
-        assertNotNull(alert.getResolvedAt());
-        assertEquals(2L, response.id());
-        verify(alertaStockRepository).save(eq(alert));
-    }
-
-    @Test
-    void resolverAlertaNoStockSeMantienePermitido() {
-        AlertaStock alert = buildStockAlert(3L, AlertaStock.AlertType.OVERSTOCK, 1, 5);
-        when(alertaStockRepository.findByIdAndOrganizationId(3L, 10L)).thenReturn(Optional.of(alert));
-        when(alertaStockRepository.save(any(AlertaStock.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        var response = service.resolver(3L);
-
-        assertTrue(alert.getResolved());
-        assertNotNull(alert.getResolvedAt());
-        assertEquals(3L, response.id());
-        verify(alertaStockRepository).save(eq(alert));
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.resolver(2L));
+        assertEquals(409, ex.getStatusCode().value());
+        assertTrue(ex.getReason().contains("se resuelven automáticamente"));
     }
 
     private AlertaStock buildStockAlert(Long alertId, AlertaStock.AlertType type, int current, int minimum) {
