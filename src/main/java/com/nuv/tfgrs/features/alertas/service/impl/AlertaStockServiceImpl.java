@@ -19,10 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.HashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -31,12 +34,15 @@ public class AlertaStockServiceImpl implements AlertaStockService {
     private final AlertaStockRepository alertaStockRepository;
     private final ProductoRepository productoRepository;
     private final CurrentOrganizationResolver currentOrganizationResolver;
+    private final StockAlertManager stockAlertManager;
 
     @Override
     @Transactional
     public List<AlertaStockResponse> listar(Boolean resueltas) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        syncInventoryAlertsForOrganization(organizationId);
         syncPriceAnomalyAlertsForOrganization(organizationId);
+        normalizeOpenAlertDuplicates(organizationId);
 
         List<AlertaStock> alerts;
         if (resueltas == null) {
@@ -56,7 +62,9 @@ public class AlertaStockServiceImpl implements AlertaStockService {
     @Transactional
     public PagedResponse<AlertaStockResponse> listarPaginado(Boolean resueltas, String search, Integer limit, Integer offset) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        syncInventoryAlertsForOrganization(organizationId);
         syncPriceAnomalyAlertsForOrganization(organizationId);
+        normalizeOpenAlertDuplicates(organizationId);
 
         int safeLimit = Math.max(1, Math.min(limit == null ? 20 : limit, 100));
         int safeOffset = Math.max(0, offset == null ? 0 : offset);
@@ -78,55 +86,53 @@ public class AlertaStockServiceImpl implements AlertaStockService {
     @Transactional
     public AlertaResumenResponse resumen() {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        syncInventoryAlertsForOrganization(organizationId);
         syncPriceAnomalyAlertsForOrganization(organizationId);
+        normalizeOpenAlertDuplicates(organizationId);
 
         long abiertas = alertaStockRepository.countByOrganizationIdAndResolvedFalse(organizationId);
-        long stockBajo = alertaStockRepository.countByOrganizationIdAndResolvedFalseAndAlertType(
+        long stockBajo = alertaStockRepository.countDistinctOpenProductsByType(
                 organizationId,
                 AlertaStock.AlertType.LOW_STOCK
         );
-        long anomaliasPrecio = alertaStockRepository.countByOrganizationIdAndResolvedFalseAndAlertType(
+        long criticas = alertaStockRepository.countDistinctOpenProductsByType(
+                organizationId,
+                AlertaStock.AlertType.OUT_OF_STOCK
+        );
+        long anomaliasPrecio = alertaStockRepository.countDistinctOpenProductsByType(
                 organizationId,
                 AlertaStock.AlertType.PRICE_ANOMALY
+        );
+        long anomalias = alertaStockRepository.countDistinctOpenProductsByTypes(
+                organizationId,
+                EnumSet.of(AlertaStock.AlertType.PRICE_ANOMALY, AlertaStock.AlertType.OVERSTOCK)
         );
         long resueltasUltimos7Dias = alertaStockRepository.countByOrganizationIdAndResolvedTrueAndResolvedAtGreaterThanEqual(
                 organizationId,
                 LocalDateTime.now().minusDays(7)
         );
 
-        return new AlertaResumenResponse(abiertas, stockBajo, anomaliasPrecio, resueltasUltimos7Dias);
+        return new AlertaResumenResponse(abiertas, stockBajo, anomaliasPrecio, resueltasUltimos7Dias, criticas, anomalias);
     }
 
     @Override
     @Transactional
     public AlertaStockResponse resolver(Long alertId) {
         Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
-        AlertaStock alert = alertaStockRepository.findByIdAndOrganizationId(alertId, organizationId)
+        alertaStockRepository.findByIdAndOrganizationId(alertId, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Alerta no encontrada: " + alertId));
 
-        if (isActiveStockAlert(alert) && productStillUnderStockThreshold(alert)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "No se puede resolver la alerta mientras el producto siga con stock bajo. Repon el inventario primero."
-            );
+        throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Las alertas se resuelven automáticamente al corregir el estado del producto: reponer stock, ajustar precios o actualizar límites."
+        );
+    }
+
+    private void syncInventoryAlertsForOrganization(Long organizationId) {
+        List<Producto> products = productoRepository.findByOrganizationId(organizationId);
+        for (Producto product : products) {
+            stockAlertManager.syncForProduct(product);
         }
-
-        alert.setResolved(true);
-        alert.setResolvedAt(LocalDateTime.now());
-        return AlertaStockResponse.from(alertaStockRepository.save(alert));
-    }
-
-    private boolean isActiveStockAlert(AlertaStock alert) {
-        return alert.getAlertType() == AlertaStock.AlertType.LOW_STOCK
-                || alert.getAlertType() == AlertaStock.AlertType.OUT_OF_STOCK;
-    }
-
-    private boolean productStillUnderStockThreshold(AlertaStock alert) {
-        Integer currentQuantity = alert.getProduct().getCurrentQuantity();
-        Integer minimumStockLevel = alert.getProduct().getMinimumStockLevel();
-        int current = currentQuantity == null ? 0 : currentQuantity;
-        int minimum = minimumStockLevel == null ? 0 : minimumStockLevel;
-        return current <= minimum;
     }
 
     private void syncPriceAnomalyAlertsForOrganization(Long organizationId) {
@@ -170,5 +176,29 @@ public class AlertaStockServiceImpl implements AlertaStockService {
         String normalized = raw.trim().toLowerCase(Locale.ROOT);
         if (normalized.isBlank()) return null;
         return "%" + normalized + "%";
+    }
+
+    private void normalizeOpenAlertDuplicates(Long organizationId) {
+        List<AlertaStock> openAlerts = alertaStockRepository.findByOrganizationIdAndResolvedFalseOrderByCreatedAtDesc(organizationId);
+        if (openAlerts.isEmpty()) return;
+
+        Map<String, AlertaStock> seenByProductAndType = new HashMap<>();
+        List<AlertaStock> duplicatesToResolve = new java.util.ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (AlertaStock alert : openAlerts) {
+            String key = alert.getProduct().getId() + "::" + alert.getAlertType().name();
+            if (!seenByProductAndType.containsKey(key)) {
+                seenByProductAndType.put(key, alert);
+                continue;
+            }
+            alert.setResolved(true);
+            alert.setResolvedAt(now);
+            duplicatesToResolve.add(alert);
+        }
+
+        if (!duplicatesToResolve.isEmpty()) {
+            alertaStockRepository.saveAll(duplicatesToResolve);
+        }
     }
 }

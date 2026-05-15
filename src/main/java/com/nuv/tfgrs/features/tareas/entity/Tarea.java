@@ -27,6 +27,9 @@ public class Tarea {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "organization_id", nullable = false)
+    private Long organizationId;
+
     @Column(nullable = false, length = 255)
     private String titulo;
 
@@ -59,6 +62,12 @@ public class Tarea {
 
     @Column(name = "creado_por", length = 255)
     private String creadoPor;
+
+    @Column(name = "creado_por_user_id", nullable = false)
+    private Long creadoPorUserId;
+
+    @Column(name = "asignado_a_user_id", nullable = false)
+    private Long asignadoAUserId;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

@@ -31,6 +31,7 @@ public class StockAlertManager {
     private void syncStockAlerts(Long organizationId, Producto producto) {
         int current = producto.getCurrentQuantity() == null ? 0 : producto.getCurrentQuantity();
         int minimum = producto.getMinimumStockLevel() == null ? 0 : producto.getMinimumStockLevel();
+        int maximum = producto.getMaximumStockLevel() == null ? Math.max(minimum + 1, minimum * 5) : producto.getMaximumStockLevel();
 
         if (current <= 0) {
             createIfMissing(
@@ -39,16 +40,42 @@ public class StockAlertManager {
                     AlertaStock.AlertType.OUT_OF_STOCK,
                     "Sin stock: " + producto.getName() + " (" + producto.getSku() + ")"
             );
+            resolveOpenAlertsByTypes(
+                    organizationId,
+                    producto.getId(),
+                    List.of(AlertaStock.AlertType.LOW_STOCK, AlertaStock.AlertType.OVERSTOCK)
+            );
             return;
         }
 
-        if (current <= minimum) {
+        if (current < minimum) {
             createIfMissing(
                     organizationId,
                     producto,
                     AlertaStock.AlertType.LOW_STOCK,
                     "Stock bajo: " + producto.getName() + " (" + producto.getSku() + ") - actual "
                             + current + ", minimo " + minimum
+            );
+            resolveOpenAlertsByTypes(
+                    organizationId,
+                    producto.getId(),
+                    List.of(AlertaStock.AlertType.OUT_OF_STOCK, AlertaStock.AlertType.OVERSTOCK)
+            );
+            return;
+        }
+
+        if (current > maximum) {
+            createIfMissing(
+                    organizationId,
+                    producto,
+                    AlertaStock.AlertType.OVERSTOCK,
+                    "Sobrestock: " + producto.getName() + " (" + producto.getSku() + ") - actual "
+                            + current + ", maximo " + maximum
+            );
+            resolveOpenAlertsByTypes(
+                    organizationId,
+                    producto.getId(),
+                    List.of(AlertaStock.AlertType.OUT_OF_STOCK, AlertaStock.AlertType.LOW_STOCK)
             );
             return;
         }
@@ -161,12 +188,32 @@ public class StockAlertManager {
         LocalDateTime now = LocalDateTime.now();
         for (AlertaStock alert : openAlerts) {
             if (alert.getAlertType() == AlertaStock.AlertType.LOW_STOCK
-                    || alert.getAlertType() == AlertaStock.AlertType.OUT_OF_STOCK) {
+                    || alert.getAlertType() == AlertaStock.AlertType.OUT_OF_STOCK
+                    || alert.getAlertType() == AlertaStock.AlertType.OVERSTOCK) {
                 alert.setResolved(true);
                 alert.setResolvedAt(now);
             }
         }
         alertaStockRepository.saveAll(openAlerts);
+    }
+
+    private void resolveOpenAlertsByTypes(Long organizationId, Long productId, List<AlertaStock.AlertType> types) {
+        if (types.isEmpty()) return;
+        List<AlertaStock> openAlerts =
+                alertaStockRepository.findByOrganizationIdAndProductIdAndResolvedFalse(organizationId, productId);
+        if (openAlerts.isEmpty()) return;
+
+        LocalDateTime now = LocalDateTime.now();
+        boolean updated = false;
+        for (AlertaStock alert : openAlerts) {
+            if (!types.contains(alert.getAlertType())) continue;
+            alert.setResolved(true);
+            alert.setResolvedAt(now);
+            updated = true;
+        }
+        if (updated) {
+            alertaStockRepository.saveAll(openAlerts);
+        }
     }
 
     private void resolveOpenPriceAnomalyAlerts(Long organizationId, Long productId) {

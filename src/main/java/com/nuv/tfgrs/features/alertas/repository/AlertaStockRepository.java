@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -34,7 +35,31 @@ public interface AlertaStockRepository extends JpaRepository<AlertaStock, Long> 
 
     long countByOrganizationIdAndResolvedFalse(Long organizationId);
     long countByOrganizationIdAndResolvedFalseAndAlertType(Long organizationId, AlertType alertType);
+    long countByOrganizationIdAndResolvedFalseAndAlertTypeIn(Long organizationId, Collection<AlertType> alertTypes);
     long countByOrganizationIdAndResolvedTrueAndResolvedAtGreaterThanEqual(Long organizationId, LocalDateTime from);
+    @Query("""
+            SELECT COUNT(DISTINCT a.product.id)
+            FROM AlertaStock a
+            WHERE a.organizationId = :organizationId
+              AND a.resolved = false
+              AND a.alertType = :alertType
+            """)
+    long countDistinctOpenProductsByType(
+            @Param("organizationId") Long organizationId,
+            @Param("alertType") AlertType alertType
+    );
+
+    @Query("""
+            SELECT COUNT(DISTINCT a.product.id)
+            FROM AlertaStock a
+            WHERE a.organizationId = :organizationId
+              AND a.resolved = false
+              AND a.alertType IN :alertTypes
+            """)
+    long countDistinctOpenProductsByTypes(
+            @Param("organizationId") Long organizationId,
+            @Param("alertTypes") Collection<AlertType> alertTypes
+    );
 
     @EntityGraph(attributePaths = {"product"})
     @Query(

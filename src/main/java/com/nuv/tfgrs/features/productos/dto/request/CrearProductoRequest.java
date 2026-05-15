@@ -15,6 +15,7 @@ public record CrearProductoRequest(
         @Positive BigDecimal costoUnitario,
         @NotNull @PositiveOrZero Integer cantidadActual,
         @NotNull @PositiveOrZero Integer nivelMinimoStock,
+        @PositiveOrZero Integer nivelMaximoStock,
         @NotNull Long categoriaId,
         @NotNull Long providerId
 ) {}
