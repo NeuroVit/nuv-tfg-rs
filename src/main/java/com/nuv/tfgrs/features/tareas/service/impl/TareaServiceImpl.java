@@ -11,6 +11,7 @@ import com.nuv.tfgrs.features.alertas.entity.AlertaStock;
 import com.nuv.tfgrs.features.organizaciones.entity.OrganizationMembership;
 import com.nuv.tfgrs.features.organizaciones.repository.OrganizationMembershipRepository;
 import com.nuv.tfgrs.features.tareas.entity.Tarea;
+import com.nuv.tfgrs.features.notificaciones.service.NotificacionService;
 import com.nuv.tfgrs.features.usuarios.entity.Usuario;
 import com.nuv.tfgrs.features.usuarios.repository.UsuarioRepository;
 import com.nuv.tfgrs.features.alertas.repository.AlertaStockRepository;
@@ -39,6 +40,7 @@ public class TareaServiceImpl implements TareaService {
     private final CurrentOrganizationResolver currentOrganizationResolver;
     private final OrganizationMembershipRepository organizationMembershipRepository;
     private final UsuarioRepository usuarioRepository;
+    private final NotificacionService notificacionService;
 
     @Override
     @Transactional
@@ -135,7 +137,14 @@ public class TareaServiceImpl implements TareaService {
                 .creadoPorUserId(creator.getId())
                 .asignadoAUserId(assignee.getId())
                 .build();
-        return toResponse(tareaRepository.save(tarea));
+        Tarea saved = tareaRepository.save(tarea);
+        notificacionService.crearNotificacionAsignacionTarea(
+                organizationId,
+                assignee.getId(),
+                saved.getId(),
+                saved.getTitulo()
+        );
+        return toResponse(saved);
     }
 
     @Override
@@ -158,8 +167,24 @@ public class TareaServiceImpl implements TareaService {
         }
 
         Usuario assignee = resolveAssigneeForManualTask(context.organizationId(), request.getAsignadoAUserId(), actor);
+        if ("ALERTA_STOCK".equals(tarea.getTipo()) && !canSeeAlertTasks(assignee)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Las tareas de alerta de stock solo se pueden asignar a usuarios con rol Manager o Admin"
+            );
+        }
+        if (tarea.getAsignadoAUserId().equals(assignee.getId())) {
+            return toResponse(tarea);
+        }
         tarea.setAsignadoAUserId(assignee.getId());
-        return toResponse(tareaRepository.save(tarea));
+        Tarea saved = tareaRepository.save(tarea);
+        notificacionService.crearNotificacionAsignacionTarea(
+                context.organizationId(),
+                assignee.getId(),
+                saved.getId(),
+                saved.getTitulo()
+        );
+        return toResponse(saved);
     }
 
     @Override
@@ -224,7 +249,13 @@ public class TareaServiceImpl implements TareaService {
                         .build();
 
                 try {
-                    tareaRepository.save(tarea);
+                    Tarea saved = tareaRepository.save(tarea);
+                    notificacionService.crearNotificacionAsignacionTarea(
+                            organizationId,
+                            usuarioAsignado.getId(),
+                            saved.getId(),
+                            saved.getTitulo()
+                    );
                 } catch (DataIntegrityViolationException ex) {
                     if (!isDuplicateAlertAssignmentConstraint(ex)) {
                         throw ex;
