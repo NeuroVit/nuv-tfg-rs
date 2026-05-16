@@ -1,6 +1,6 @@
 package com.nuv.tfgrs.security;
 
-import com.nuv.tfgrs.entity.Usuario;
+import com.nuv.tfgrs.features.usuarios.entity.Usuario;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
