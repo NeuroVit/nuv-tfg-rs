@@ -1,3 +1,0 @@
-ALTER TABLE providers
-    ADD COLUMN email VARCHAR(254) NULL AFTER name;
-

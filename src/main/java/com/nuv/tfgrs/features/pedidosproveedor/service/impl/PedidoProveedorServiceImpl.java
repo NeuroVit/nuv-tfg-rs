@@ -30,6 +30,7 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -121,7 +122,13 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
         try {
             Proveedor proveedor = proveedorRepository.findByIdAndOrganizationId(response.providerId(), organizationId)
                     .orElseThrow(() -> new ResourceNotFoundException("Proveedor no encontrado: " + response.providerId()));
-            pedidoProveedorEmailService.enviarPedidoAProveedor(response, proveedor);
+            CompletableFuture.runAsync(() -> {
+                try {
+                    pedidoProveedorEmailService.enviarPedidoAProveedor(response, proveedor);
+                } catch (Exception ex) {
+                    log.warn("No se pudo enviar el correo del pedido #{} al proveedor. El pedido ya quedó en estado SENT.", orderId, ex);
+                }
+            });
         } catch (Exception ex) {
             log.warn("No se pudo enviar el correo del pedido #{} al proveedor. El pedido ya quedó en estado SENT.", orderId, ex);
         }
@@ -174,7 +181,11 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movement);
-            stockAlertManager.syncForProduct(saved);
+            try {
+                stockAlertManager.syncForProduct(saved);
+            } catch (Exception ex) {
+                log.warn("No se pudieron sincronizar alertas para producto {} en recepción de pedido #{}", saved.getId(), orderId, ex);
+            }
         }
 
         String sql = """
@@ -474,4 +485,3 @@ public class PedidoProveedorServiceImpl implements PedidoProveedorService {
     ) {
     }
 }
-
