@@ -137,11 +137,6 @@ public class AlertaStockServiceImpl implements AlertaStockService {
 
     private void syncPriceAnomalyAlertsForOrganization(Long organizationId) {
         List<Producto> anomalyProducts = productoRepository.findPriceAnomalyProductsByOrganizationId(organizationId);
-        Set<Long> anomalyProductIds = new HashSet<>();
-        for (Producto product : anomalyProducts) {
-            anomalyProductIds.add(product.getId());
-        }
-
         List<AlertaStock> openPriceAnomalyAlerts = alertaStockRepository
                 .findByOrganizationIdAndAlertTypeAndResolvedFalseOrderByCreatedAtDesc(
                         organizationId,
@@ -162,13 +157,9 @@ public class AlertaStockServiceImpl implements AlertaStockService {
                     .build());
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        for (AlertaStock alert : openPriceAnomalyAlerts) {
-            if (anomalyProductIds.contains(alert.getProduct().getId())) continue;
-            alert.setResolved(true);
-            alert.setResolvedAt(now);
-        }
-        alertaStockRepository.saveAll(openPriceAnomalyAlerts);
+        // No resolvemos aquí alertas PRICE_ANOMALY porque también existen
+        // anomalías por variación brusca de precio (> umbral), no solo por venta<=coste.
+        // Su resolución se gestiona en StockAlertManager al sincronizar cada producto.
     }
 
     private String normalizeLikeSearch(String raw) {
