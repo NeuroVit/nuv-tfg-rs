@@ -1,4 +1,4 @@
-package com.nuv.tfgrs.features.pedidosproveedor.service.impl;
+﻿package com.nuv.tfgrs.features.pedidosproveedor.service.impl;
 
 import com.nuv.tfgrs.features.pedidosproveedor.dto.response.PedidoProveedorItemResponse;
 import com.nuv.tfgrs.features.pedidosproveedor.dto.response.PedidoProveedorResponse;
@@ -120,11 +120,21 @@ public class PedidoProveedorEmailServiceImpl implements PedidoProveedorEmailServ
         }
 
         return """
-                <div style='background:#f3f4f6;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#111827;'>
-                  <div style='max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;'>
-                    <div style='background:linear-gradient(135deg,#0f172a 0%%,#1f2937 100%%);padding:20px 24px;'>
-                      <h1 style='margin:0;color:#ffffff;font-size:22px;'>NeuralStock</h1>
-                      <p style='margin:6px 0 0 0;color:#cbd5e1;font-size:13px;'>Gestión inteligente de inventario</p>
+                <div style='background:#f4f5f7;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#111827;'>
+                  <div style='max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;'>
+                    <div style='background:linear-gradient(135deg,#111827 0%%,#1f2937 35%%,#e11d48 100%%);padding:20px 24px;'>
+                      <table role='presentation' width='100%%' style='border-collapse:collapse;'>
+                        <tr>
+                          <td style='color:#ffffff;'>
+                            <h1 style='margin:0;font-size:22px;'>NeuralStock</h1>
+                            <p style='margin:6px 0 0 0;color:#fecdd3;font-size:13px;'>Solicitud de abastecimiento a proveedor</p>
+                          </td>
+                          <td style='text-align:right;color:#ffffff;vertical-align:top;'>
+                            <p style='margin:0;font-size:11px;opacity:0.9;'>DOCUMENTO</p>
+                            <p style='margin:4px 0 0 0;font-size:18px;font-weight:700;letter-spacing:0.3px;'>PROVEEDOR</p>
+                          </td>
+                        </tr>
+                      </table>
                     </div>
                     <div style='padding:24px;'>
                       <h2 style='margin:0 0 14px 0;font-size:20px;color:#111827;'>Pedido #%d</h2>
@@ -133,24 +143,24 @@ public class PedidoProveedorEmailServiceImpl implements PedidoProveedorEmailServ
                       </p>
 
                       <div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;'>
-                        <div style='padding:12px;border:1px solid #e5e7eb;border-radius:8px;'>
+                        <div style='padding:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff7ed;'>
                           <p style='margin:0;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;'>Llegada deseada</p>
-                          <p style='margin:6px 0 0 0;font-size:15px;font-weight:600;'>%s</p>
+                          <p style='margin:6px 0 0 0;font-size:15px;font-weight:700;color:#9a3412;'>%s</p>
                         </div>
-                        <div style='padding:12px;border:1px solid #e5e7eb;border-radius:8px;'>
+                        <div style='padding:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fef2f2;'>
                           <p style='margin:0;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;'>Pedido recomendado</p>
-                          <p style='margin:6px 0 0 0;font-size:15px;font-weight:600;'>%s</p>
+                          <p style='margin:6px 0 0 0;font-size:15px;font-weight:700;color:#be123c;'>%s</p>
                         </div>
                       </div>
 
-                      <table style='width:100%%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;'>
+                      <table style='width:100%%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;'>
                         <thead>
-                          <tr style='background:#f9fafb;'>
-                            <th style='padding:10px;text-align:left;font-size:12px;color:#374151;text-transform:uppercase;'>Producto</th>
-                            <th style='padding:10px;text-align:left;font-size:12px;color:#374151;text-transform:uppercase;'>SKU</th>
-                            <th style='padding:10px;text-align:center;font-size:12px;color:#374151;text-transform:uppercase;'>Cantidad</th>
-                            <th style='padding:10px;text-align:right;font-size:12px;color:#374151;text-transform:uppercase;'>P. unitario</th>
-                            <th style='padding:10px;text-align:right;font-size:12px;color:#374151;text-transform:uppercase;'>Subtotal</th>
+                          <tr style='background:#e11d48;'>
+                            <th style='padding:11px 10px;text-align:left;font-size:11px;color:#ffffff;text-transform:uppercase;letter-spacing:0.05em;'>Producto</th>
+                            <th style='padding:11px 10px;text-align:left;font-size:11px;color:#ffffff;text-transform:uppercase;letter-spacing:0.05em;'>SKU</th>
+                            <th style='padding:11px 10px;text-align:center;font-size:11px;color:#ffffff;text-transform:uppercase;letter-spacing:0.05em;'>Cantidad</th>
+                            <th style='padding:11px 10px;text-align:right;font-size:11px;color:#ffffff;text-transform:uppercase;letter-spacing:0.05em;'>P. unitario</th>
+                            <th style='padding:11px 10px;text-align:right;font-size:11px;color:#ffffff;text-transform:uppercase;letter-spacing:0.05em;'>Subtotal</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -160,14 +170,15 @@ public class PedidoProveedorEmailServiceImpl implements PedidoProveedorEmailServ
 
                       <div style='margin-top:16px;text-align:right;'>
                         <p style='margin:0;font-size:13px;color:#6b7280;'>Importe estimado total</p>
-                        <p style='margin:4px 0 0 0;font-size:22px;font-weight:700;color:#0f766e;'>%s</p>
+                        <p style='margin:4px 0 0 0;font-size:22px;font-weight:700;color:#be123c;'>%s</p>
                       </div>
 
                       %s
 
-                      <p style='margin:24px 0 0 0;font-size:13px;color:#6b7280;'>
-                        Gracias por colaborar con NeuralStock.
-                      </p>
+                      <div style='margin-top:20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;'>
+                        <p style='margin:0;font-size:14px;color:#0f172a;font-weight:700;'>Documento para proveedor</p>
+                        <p style='margin:6px 0 0 0;font-size:13px;color:#475569;'>Por favor confirmar disponibilidad y tiempos de entrega respondiendo este correo.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
