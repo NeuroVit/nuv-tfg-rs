@@ -2,7 +2,7 @@ spring:
   application:
     name: tfg-rs
   config:
-    import: optional:file:.env[.properties]
+    import: optional:file:.env[.properties],optional:file:./nuv-tfg-rs/.env[.properties]
 
   docker:
     compose:
@@ -11,7 +11,7 @@ spring:
       lifecycle-management: ${SPRING_DOCKER_COMPOSE_LIFECYCLE:start-and-stop}
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:stock_manager}}}
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3307}/${DB_NAME:stock_manager}}}
     username: ${DB_USER:${MYSQL_USER:nuv-tfg}}
     password: ${DB_PASSWORD:${MYSQL_PASSWORD:0000}}
     driver-class-name: com.mysql.cj.jdbc.Driver

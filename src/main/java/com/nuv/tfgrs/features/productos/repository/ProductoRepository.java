@@ -31,7 +31,7 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
             FROM Producto p
             WHERE p.organizationId = :organizationId
               AND p.acquisitionPrice IS NOT NULL
-              AND p.unitPrice < p.acquisitionPrice
+              AND p.unitPrice <= p.acquisitionPrice
             """)
     List<Producto> findPriceAnomalyProductsByOrganizationId(@Param("organizationId") Long organizationId);
 
@@ -53,14 +53,14 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
                             OR (:status = 'LOW' AND p.currentQuantity > 0 AND p.currentQuantity < p.minimumStockLevel)
                             OR (:status = 'ANOMALY'
                                 AND (
-                                    (p.acquisitionPrice IS NOT NULL AND p.unitPrice < p.acquisitionPrice)
+                                    (p.acquisitionPrice IS NOT NULL AND p.unitPrice <= p.acquisitionPrice)
                                     OR p.currentQuantity > p.maximumStockLevel
                                 )
                             )
                             OR (:status = 'NORMAL'
                                 AND p.currentQuantity >= p.minimumStockLevel
                                 AND p.currentQuantity <= p.maximumStockLevel
-                                AND (p.acquisitionPrice IS NULL OR p.unitPrice >= p.acquisitionPrice)
+                                AND (p.acquisitionPrice IS NULL OR p.unitPrice > p.acquisitionPrice)
                             )
                       )
                       AND (
@@ -85,14 +85,14 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
                             OR (:status = 'LOW' AND p.currentQuantity > 0 AND p.currentQuantity < p.minimumStockLevel)
                             OR (:status = 'ANOMALY'
                                 AND (
-                                    (p.acquisitionPrice IS NOT NULL AND p.unitPrice < p.acquisitionPrice)
+                                    (p.acquisitionPrice IS NOT NULL AND p.unitPrice <= p.acquisitionPrice)
                                     OR p.currentQuantity > p.maximumStockLevel
                                 )
                             )
                             OR (:status = 'NORMAL'
                                 AND p.currentQuantity >= p.minimumStockLevel
                                 AND p.currentQuantity <= p.maximumStockLevel
-                                AND (p.acquisitionPrice IS NULL OR p.unitPrice >= p.acquisitionPrice)
+                                AND (p.acquisitionPrice IS NULL OR p.unitPrice > p.acquisitionPrice)
                             )
                       )
                       AND (

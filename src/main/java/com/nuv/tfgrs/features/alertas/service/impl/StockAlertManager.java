@@ -110,7 +110,7 @@ public class StockAlertManager {
                     + primaryAnomaly.messagePart;
         }
 
-        createIfMissing(producto.getOrganizationId(), producto, AlertaStock.AlertType.PRICE_ANOMALY, message);
+        refreshPriceAnomalyAlert(producto.getOrganizationId(), producto, message);
     }
 
     private void syncPriceBelowCostAnomaly(Long organizationId, Producto producto) {
@@ -118,13 +118,12 @@ public class StockAlertManager {
         BigDecimal acquisitionPrice = producto.getAcquisitionPrice();
         boolean hasPriceAnomaly = unitPrice != null
                 && acquisitionPrice != null
-                && unitPrice.compareTo(acquisitionPrice) < 0;
+                && unitPrice.compareTo(acquisitionPrice) <= 0;
 
         if (hasPriceAnomaly) {
-            createIfMissing(
+            refreshPriceAnomalyAlert(
                     organizationId,
                     producto,
-                    AlertaStock.AlertType.PRICE_ANOMALY,
                     "Anomalia de precio: precio de venta "
                             + formatMoney(unitPrice)
                             + " por debajo del coste "
@@ -180,6 +179,39 @@ public class StockAlertManager {
         alertaStockRepository.save(alert);
     }
 
+    private void refreshPriceAnomalyAlert(Long organizationId, Producto producto, String message) {
+        List<AlertaStock> openAlerts =
+                alertaStockRepository.findByOrganizationIdAndProductIdAndResolvedFalse(organizationId, producto.getId());
+
+        LocalDateTime now = LocalDateTime.now();
+        boolean sameMessageAlreadyOpen = false;
+        boolean updated = false;
+
+        for (AlertaStock alert : openAlerts) {
+            if (alert.getAlertType() != AlertaStock.AlertType.PRICE_ANOMALY) continue;
+            if (message.equals(alert.getMessage())) {
+                sameMessageAlreadyOpen = true;
+                continue;
+            }
+            alert.setResolved(true);
+            alert.setResolvedAt(now);
+            updated = true;
+        }
+
+        if (updated) {
+            alertaStockRepository.saveAll(openAlerts);
+        }
+        if (sameMessageAlreadyOpen) return;
+
+        AlertaStock alert = AlertaStock.builder()
+                .organizationId(organizationId)
+                .product(producto)
+                .alertType(AlertaStock.AlertType.PRICE_ANOMALY)
+                .message(message)
+                .build();
+        alertaStockRepository.save(alert);
+    }
+
     private void resolveOpenStockAlerts(Long organizationId, Long productId) {
         List<AlertaStock> openAlerts =
                 alertaStockRepository.findByOrganizationIdAndProductIdAndResolvedFalse(organizationId, productId);
@@ -222,13 +254,20 @@ public class StockAlertManager {
         if (openAlerts.isEmpty()) return;
 
         LocalDateTime now = LocalDateTime.now();
+        boolean updated = false;
         for (AlertaStock alert : openAlerts) {
-            if (alert.getAlertType() == AlertaStock.AlertType.PRICE_ANOMALY) {
-                alert.setResolved(true);
-                alert.setResolvedAt(now);
-            }
+            if (alert.getAlertType() != AlertaStock.AlertType.PRICE_ANOMALY) continue;
+            String message = alert.getMessage() == null ? "" : alert.getMessage().toLowerCase();
+            // Solo resolvemos aquí alertas de venta<=coste; las de cambio brusco
+            // se mantienen para revisión manual.
+            if (!message.contains("por debajo del coste")) continue;
+            alert.setResolved(true);
+            alert.setResolvedAt(now);
+            updated = true;
         }
-        alertaStockRepository.saveAll(openAlerts);
+        if (updated) {
+            alertaStockRepository.saveAll(openAlerts);
+        }
     }
 
     private String formatMoney(BigDecimal value) {

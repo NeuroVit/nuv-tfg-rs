@@ -387,7 +387,7 @@ public class ProductoServiceImpl implements ProductoService {
         String sql = """
                 SELECT
                     p.id AS product_id,
-                    COALESCE(ranked.unit_price_snapshot, p.acquisition_price) AS costo_unitario
+                    COALESCE(p.acquisition_price, ranked.unit_price_snapshot) AS costo_unitario
                 FROM products p
                 LEFT JOIN (
                     SELECT product_id, unit_price_snapshot

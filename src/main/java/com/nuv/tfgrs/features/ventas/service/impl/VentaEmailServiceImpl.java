@@ -108,25 +108,47 @@ public class VentaEmailServiceImpl implements VentaEmailService {
         BigDecimal total = venta.totalAmount() != null ? venta.totalAmount() : BigDecimal.ZERO;
 
         return """
-                <div style='background:#f3f4f6;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#111827;'>
-                  <div style='max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;'>
-                    <div style='background:linear-gradient(135deg,#0f172a 0%%,#1f2937 100%%);padding:20px 24px;'>
-                      <h1 style='margin:0;color:#ffffff;font-size:22px;'>NeuralStock</h1>
-                      <p style='margin:6px 0 0 0;color:#cbd5e1;font-size:13px;'>Comprobante de compra</p>
+                <div style='background:#eef2f7;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#111827;'>
+                  <div style='max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #dbe2ea;border-radius:14px;overflow:hidden;'>
+                    <div style='background:linear-gradient(135deg,#0f172a 0%%,#1e293b 42%%,#0ea5a4 100%%);padding:20px 24px;'>
+                      <table role='presentation' width='100%%' style='border-collapse:collapse;'>
+                        <tr>
+                          <td style='color:#ffffff;'>
+                            <h1 style='margin:0;font-size:22px;'>NeuralStock</h1>
+                            <p style='margin:6px 0 0 0;color:#c7d2fe;font-size:13px;'>Comprobante de compra</p>
+                          </td>
+                          <td style='text-align:right;color:#ffffff;vertical-align:top;'>
+                            <p style='margin:0;font-size:11px;opacity:0.9;'>DOCUMENTO</p>
+                            <p style='margin:4px 0 0 0;font-size:18px;font-weight:700;letter-spacing:0.3px;'>CLIENTE</p>
+                          </td>
+                        </tr>
+                      </table>
                     </div>
                     <div style='padding:24px;'>
-                      <h2 style='margin:0 0 10px 0;font-size:20px;'>Compra #%d</h2>
-                      <p style='margin:0 0 2px 0;font-size:14px;color:#374151;'><strong>Cliente:</strong> %s</p>
-                      <p style='margin:0 0 16px 0;font-size:14px;color:#374151;'><strong>Fecha:</strong> %s</p>
+                      <table role='presentation' width='100%%' style='border-collapse:collapse;margin-bottom:14px;'>
+                        <tr>
+                          <td style='width:58%%;vertical-align:top;padding-right:12px;'>
+                            <h2 style='margin:0 0 12px 0;font-size:20px;color:#0f172a;'>Compra #%d</h2>
+                            <p style='margin:0 0 4px 0;font-size:14px;color:#334155;'><strong>Cliente:</strong> %s</p>
+                            <p style='margin:0;font-size:14px;color:#334155;'><strong>Fecha:</strong> %s</p>
+                          </td>
+                          <td style='width:42%%;vertical-align:top;'>
+                            <div style='border:1px solid #dbe2ea;border-radius:10px;padding:12px 14px;background:#f8fafc;'>
+                              <p style='margin:0 0 6px 0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;'>Estado</p>
+                              <p style='margin:0;font-size:14px;font-weight:700;color:#0f766e;'>Procesada correctamente</p>
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
 
-                      <table style='width:100%%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;'>
+                      <table style='width:100%%;border-collapse:collapse;border:1px solid #dbe2ea;border-radius:10px;overflow:hidden;'>
                         <thead>
-                          <tr style='background:#f9fafb;'>
-                            <th style='padding:10px;text-align:left;font-size:12px;color:#374151;text-transform:uppercase;'>Producto</th>
-                            <th style='padding:10px;text-align:left;font-size:12px;color:#374151;text-transform:uppercase;'>SKU</th>
-                            <th style='padding:10px;text-align:center;font-size:12px;color:#374151;text-transform:uppercase;'>Cantidad</th>
-                            <th style='padding:10px;text-align:right;font-size:12px;color:#374151;text-transform:uppercase;'>P. unitario</th>
-                            <th style='padding:10px;text-align:right;font-size:12px;color:#374151;text-transform:uppercase;'>Subtotal</th>
+                          <tr style='background:#0f172a;'>
+                            <th style='padding:11px 10px;text-align:left;font-size:11px;color:#e2e8f0;text-transform:uppercase;letter-spacing:0.05em;'>Producto</th>
+                            <th style='padding:11px 10px;text-align:left;font-size:11px;color:#e2e8f0;text-transform:uppercase;letter-spacing:0.05em;'>SKU</th>
+                            <th style='padding:11px 10px;text-align:center;font-size:11px;color:#e2e8f0;text-transform:uppercase;letter-spacing:0.05em;'>Cantidad</th>
+                            <th style='padding:11px 10px;text-align:right;font-size:11px;color:#e2e8f0;text-transform:uppercase;letter-spacing:0.05em;'>P. unitario</th>
+                            <th style='padding:11px 10px;text-align:right;font-size:11px;color:#e2e8f0;text-transform:uppercase;letter-spacing:0.05em;'>Subtotal</th>
                           </tr>
                         </thead>
                         <tbody>%s</tbody>
@@ -134,19 +156,22 @@ public class VentaEmailServiceImpl implements VentaEmailService {
 
                       <div style='margin-top:16px;display:flex;justify-content:flex-end;'>
                         <div style='min-width:280px;'>
-                          <div style='display:flex;justify-content:space-between;font-size:14px;color:#4b5563;padding:4px 0;'>
-                            <span>Subtotal</span><strong>%s</strong>
-                          </div>
-                          <div style='display:flex;justify-content:space-between;font-size:14px;color:#4b5563;padding:4px 0;'>
-                            <span>Descuento</span><strong>%s</strong>
-                          </div>
-                          <div style='display:flex;justify-content:space-between;font-size:20px;color:#0f766e;padding:8px 0 0 0;border-top:1px solid #e5e7eb;margin-top:6px;'>
-                            <span>Total</span><strong>%s</strong>
-                          </div>
+                            <div style='display:flex;justify-content:space-between;gap:12px;font-size:14px;color:#4b5563;padding:4px 0;'>
+                              <span>Subtotal =</span><strong style='white-space:nowrap;'>%s</strong>
+                            </div>
+                            <div style='display:flex;justify-content:space-between;gap:12px;font-size:14px;color:#4b5563;padding:4px 0;'>
+                              <span>Descuento =</span><strong style='white-space:nowrap;'>%s</strong>
+                            </div>
+                            <div style='display:flex;justify-content:space-between;gap:12px;font-size:20px;color:#0f766e;padding:8px 0 0 0;border-top:1px solid #e5e7eb;margin-top:6px;'>
+                              <span>Total =</span><strong style='white-space:nowrap;'>%s</strong>
+                            </div>
                         </div>
                       </div>
 
-                      <p style='margin:24px 0 0 0;font-size:13px;color:#6b7280;'>Gracias por confiar en NeuralStock.</p>
+                      <div style='margin-top:20px;background:linear-gradient(135deg,#dcfce7 0%%,#ccfbf1 100%%);border:1px solid #99f6e4;border-radius:10px;padding:14px 16px;'>
+                        <p style='margin:0;font-size:15px;color:#065f46;font-weight:700;'>Gracias por su compra.</p>
+                        <p style='margin:6px 0 0 0;font-size:13px;color:#0f766e;'>Su comprobante queda registrado en NeuralStock. Esperamos volver a atenderle pronto.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
