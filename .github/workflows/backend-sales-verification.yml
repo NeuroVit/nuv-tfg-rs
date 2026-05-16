@@ -5,10 +5,12 @@ on:
     branches:
       - dev
       - general
+      - javitfg
   push:
     branches:
       - dev
       - general
+      - javitfg
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
