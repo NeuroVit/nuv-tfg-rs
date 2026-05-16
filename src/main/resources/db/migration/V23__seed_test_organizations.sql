@@ -27,22 +27,22 @@ DELETE FROM categories           WHERE organization_id = 1;
 -- ════════════════════════════════════════════════════════════════
 INSERT INTO users (nombre, apellidos, username, email, password_hash, role,
                    is_active, must_change_password, token_version, time_zone) VALUES
-  ('Nova',  'Admin',   'nova_admin',   'nova.admin@novatech.test',
+  ('Nova',  'Administrador',   'nova_admin',   'nova.admin@novatech.test',
    '$2a$12$8eVpSMpEBmIkjvuSFMNTCOGvT5b9TRrQ1BIFz7XtHlKmZ3v9DqPle',
    'ROLE_ADMIN',   1, 0, 0, 'Europe/Madrid'),
-  ('Nova',  'Manager', 'nova_manager', 'nova.manager@novatech.test',
+  ('Nova',  'Gerente', 'nova_manager', 'nova.manager@novatech.test',
    '$2a$12$8eVpSMpEBmIkjvuSFMNTCOGvT5b9TRrQ1BIFz7XtHlKmZ3v9DqPle',
    'ROLE_MANAGER', 1, 0, 0, 'Europe/Madrid'),
-  ('Mid',   'Admin',   'mid_admin',    'mid.admin@midmart.test',
+  ('Mid',   'Administrador',   'mid_admin',    'mid.admin@midmart.test',
    '$2a$12$8eVpSMpEBmIkjvuSFMNTCOGvT5b9TRrQ1BIFz7XtHlKmZ3v9DqPle',
    'ROLE_ADMIN',   1, 0, 0, 'Europe/Madrid'),
-  ('Mid',   'Manager', 'mid_manager',  'mid.manager@midmart.test',
+  ('Mid',   'Gerente', 'mid_manager',  'mid.manager@midmart.test',
    '$2a$12$8eVpSMpEBmIkjvuSFMNTCOGvT5b9TRrQ1BIFz7XtHlKmZ3v9DqPle',
    'ROLE_MANAGER', 1, 0, 0, 'Europe/Madrid'),
-  ('Zero',  'Admin',   'zero_admin',   'zero.admin@zeroedge.test',
+  ('Zero',  'Administrador',   'zero_admin',   'zero.admin@zeroedge.test',
    '$2a$12$8eVpSMpEBmIkjvuSFMNTCOGvT5b9TRrQ1BIFz7XtHlKmZ3v9DqPle',
    'ROLE_ADMIN',   1, 0, 0, 'Europe/Madrid'),
-  ('Zero',  'Manager', 'zero_manager', 'zero.manager@zeroedge.test',
+  ('Zero',  'Gerente', 'zero_manager', 'zero.manager@zeroedge.test',
    '$2a$12$8eVpSMpEBmIkjvuSFMNTCOGvT5b9TRrQ1BIFz7XtHlKmZ3v9DqPle',
    'ROLE_MANAGER', 1, 0, 0, 'Europe/Madrid');
 
@@ -58,9 +58,9 @@ SET @zero_manager_id = LAST_INSERT_ID() + 5;
 -- 2. ORGANIZATIONS
 -- ════════════════════════════════════════════════════════════════
 INSERT INTO organizations (name, slug) VALUES
-  ('NovaTech Pro',     'novatech-pro'),
-  ('MidMart Supply',   'midmart-supply'),
-  ('ZeroEdge Trading', 'zeroedge-trading');
+  ('NovaTech Profesional',   'novatech-pro'),
+  ('Suministros MidMart',    'midmart-supply'),
+  ('Comercial ZeroEdge',     'zeroedge-trading');
 
 SET @org_a_id = LAST_INSERT_ID();
 SET @org_b_id = LAST_INSERT_ID() + 1;
@@ -81,21 +81,21 @@ INSERT INTO organization_memberships (organization_id, user_id, role) VALUES
 -- 4. CATEGORIES (5 per org)
 -- ════════════════════════════════════════════════════════════════
 INSERT INTO categories (organization_id, name, description) VALUES
-  (@org_a_id, 'Monitors',           'Displays and screens for workstations'),
-  (@org_a_id, 'Keyboards & Mice',   'Input peripherals and combos'),
-  (@org_a_id, 'Headsets & Audio',   'Headphones, microphones and webcams'),
-  (@org_a_id, 'Cables & Adapters',  'Connectivity cables, hubs and docks'),
-  (@org_a_id, 'Accessories',        'Stands, arms and ergonomic add-ons'),
-  (@org_b_id, 'Paper & Printing',   'Paper, toner and printing consumables'),
-  (@org_b_id, 'Pens & Writing',     'Ballpens, markers and correction supplies'),
-  (@org_b_id, 'Filing & Storage',   'Binders, folders and filing systems'),
-  (@org_b_id, 'Desk Accessories',   'Staplers, tape and everyday desk items'),
-  (@org_b_id, 'Presentation',       'Whiteboards, easels and remote controls'),
-  (@org_c_id, 'Hot Drinks',         'Coffee, tea and hot beverage mixes'),
-  (@org_c_id, 'Snacks & Sweets',    'Crisps, chocolate and on-the-go snacks'),
-  (@org_c_id, 'Cereals & Breakfast','Oats, cereals and breakfast staples'),
-  (@org_c_id, 'Cleaning',           'Household cleaning products'),
-  (@org_c_id, 'Beverages',          'Cold drinks, juices and plant milks');
+  (@org_a_id, 'Monitores',              'Pantallas para puestos de trabajo'),
+  (@org_a_id, 'Teclados y Ratones',     'Periféricos de entrada y combos'),
+  (@org_a_id, 'Auriculares y Audio',    'Auriculares, micrófonos y cámaras web'),
+  (@org_a_id, 'Cables y Adaptadores',   'Cables de conectividad, concentradores y bases'),
+  (@org_a_id, 'Accesorios',             'Soportes, brazos y extras ergonómicos'),
+  (@org_b_id, 'Papel e Impresión',      'Papel, tóner y consumibles de impresión'),
+  (@org_b_id, 'Bolígrafos y Escritura', 'Bolígrafos, rotuladores y correctores'),
+  (@org_b_id, 'Archivo y Almacenaje',   'Archivadores, carpetas y sistemas de archivo'),
+  (@org_b_id, 'Accesorios de Escritorio','Grapadoras, cinta y artículos de escritorio'),
+  (@org_b_id, 'Presentación',           'Pizarras, caballetes y mandos de presentación'),
+  (@org_c_id, 'Bebidas Calientes',      'Café, té y preparados de bebidas calientes'),
+  (@org_c_id, 'Aperitivos y Dulces',    'Patatas, chocolate y aperitivos para llevar'),
+  (@org_c_id, 'Cereales y Desayuno',    'Avena, cereales y básicos de desayuno'),
+  (@org_c_id, 'Limpieza',               'Productos de limpieza para el hogar'),
+  (@org_c_id, 'Bebidas',                'Bebidas frías, zumos y bebidas vegetales');
 
 SET @cat_a1 = (SELECT id FROM categories WHERE organization_id=@org_a_id ORDER BY id LIMIT 1 OFFSET 0);
 SET @cat_a2 = (SELECT id FROM categories WHERE organization_id=@org_a_id ORDER BY id LIMIT 1 OFFSET 1);
@@ -117,12 +117,12 @@ SET @cat_c5 = (SELECT id FROM categories WHERE organization_id=@org_c_id ORDER B
 -- 5. PROVIDERS
 -- ════════════════════════════════════════════════════════════════
 INSERT INTO providers (organization_id, name, email, warehouse_location, lead_time_days, is_active) VALUES
-  (@org_a_id, 'TechDistrib',     'orders@techdistrib.test', 'Madrid Logistics Hub',    4, 1),
-  (@org_a_id, 'PeriphPlus',      'stock@periphplus.test',   'Barcelona Warehouse',     5, 1),
-  (@org_a_id, 'CableWorld',      'sales@cableworld.test',   'Valencia Distribution',   3, 1),
-  (@org_b_id, 'OfficeDepot ES',  'pedidos@odepotes.test',   'Bilbao Supply Centre',    8, 1),
-  (@org_b_id, 'PaperLane',       'info@paperlane.test',     'Sevilla Depot',          14, 1),
-  (@org_c_id, 'QuickFast Foods', 'orders@quickfast.test',   'Zaragoza Cash & Carry',  15, 1);
+  (@org_a_id, 'TechDistrib',             'pedidos@techdistrib.test', 'Centro Logístico Madrid',   4, 1),
+  (@org_a_id, 'PerifPlus',               'inventario@periphplus.test',   'Almacén Barcelona',         5, 1),
+  (@org_a_id, 'MundoCable',              'ventas@cableworld.test',   'Distribución Valencia',     3, 1),
+  (@org_b_id, 'Suministros Oficina ES',  'pedidos@odepotes.test',   'Centro de Suministro Bilbao', 8, 1),
+  (@org_b_id, 'RutaPapel',               'info@paperlane.test',     'Depósito Sevilla',         14, 1),
+  (@org_c_id, 'Alimentos Rápidos',       'pedidos@quickfast.test',   'Mayorista Zaragoza',       15, 1);
 
 SET @prov_a1 = (SELECT id FROM providers WHERE organization_id=@org_a_id ORDER BY id LIMIT 1 OFFSET 0);
 SET @prov_a2 = (SELECT id FROM providers WHERE organization_id=@org_a_id ORDER BY id LIMIT 1 OFFSET 1);
@@ -140,95 +140,95 @@ SET @prov_c1 = (SELECT id FROM providers WHERE organization_id=@org_c_id ORDER B
 INSERT INTO products (organization_id, name, sku, current_quantity, minimum_stock_level,
                       unit_price, acquisition_price, category_id, provider_id, version) VALUES
   -- ── Org A: Monitors (cat_a1, prov_a1) ─────────────────────
-  (@org_a_id,'UltraWide Monitor 34"',  'NVT-MON-001', 0, 15, 499.99, 209.99, @cat_a1, @prov_a1, 0),
-  (@org_a_id,'4K Display 27"',         'NVT-MON-002', 0, 20, 399.99, 167.99, @cat_a1, @prov_a1, 0),
-  (@org_a_id,'Full HD Monitor 24"',    'NVT-MON-003', 0, 30, 199.99,  83.99, @cat_a1, @prov_a1, 0),
-  (@org_a_id,'Portable Monitor 15"',   'NVT-MON-004', 0, 15, 149.99,  62.99, @cat_a1, @prov_a1, 0),
-  (@org_a_id,'Curved Monitor 27"',     'NVT-MON-005', 0, 20, 299.99, 125.99, @cat_a1, @prov_a1, 0),
+  (@org_a_id,'Monitor Ultrapanorámico 34"', 'NVT-MON-001', 0, 15, 499.99, 209.99, @cat_a1, @prov_a1, 0),
+  (@org_a_id,'Pantalla 4K 27"',            'NVT-MON-002', 0, 20, 399.99, 167.99, @cat_a1, @prov_a1, 0),
+  (@org_a_id,'Monitor Full HD 24"',        'NVT-MON-003', 0, 30, 199.99,  83.99, @cat_a1, @prov_a1, 0),
+  (@org_a_id,'Monitor Portátil 15"',       'NVT-MON-004', 0, 15, 149.99,  62.99, @cat_a1, @prov_a1, 0),
+  (@org_a_id,'Monitor Curvo 27"',          'NVT-MON-005', 0, 20, 299.99, 125.99, @cat_a1, @prov_a1, 0),
   -- ── Org A: Keyboards & Mice (cat_a2, prov_a2) ─────────────
-  (@org_a_id,'Mechanical Keyboard RGB','NVT-KBD-001', 0, 20, 129.99,  54.59, @cat_a2, @prov_a2, 0),
-  (@org_a_id,'Wireless Keyboard',      'NVT-KBD-002', 0, 25, 69.99,  29.39, @cat_a2, @prov_a2, 0),
-  (@org_a_id,'Gaming Mouse 16000DPI',  'NVT-KBD-003', 0, 25, 79.99,  33.59, @cat_a2, @prov_a2, 0),
-  (@org_a_id,'Wireless Mouse',         'NVT-KBD-004', 0, 30, 49.99,  20.99, @cat_a2, @prov_a2, 0),
-  (@org_a_id,'Keyboard & Mouse Combo', 'NVT-KBD-005', 0, 20, 89.99,  37.79, @cat_a2, @prov_a2, 0),
+  (@org_a_id,'Teclado Mecánico RGB',   'NVT-KBD-001', 0, 20, 129.99,  54.59, @cat_a2, @prov_a2, 0),
+  (@org_a_id,'Teclado Inalámbrico',    'NVT-KBD-002', 0, 25, 69.99,  29.39, @cat_a2, @prov_a2, 0),
+  (@org_a_id,'Ratón para Juegos 16000DPI','NVT-KBD-003', 0, 25, 79.99,  33.59, @cat_a2, @prov_a2, 0),
+  (@org_a_id,'Ratón Inalámbrico',      'NVT-KBD-004', 0, 30, 49.99,  20.99, @cat_a2, @prov_a2, 0),
+  (@org_a_id,'Combo Teclado y Ratón',  'NVT-KBD-005', 0, 20, 89.99,  37.79, @cat_a2, @prov_a2, 0),
   -- ── Org A: Headsets & Audio (cat_a3, prov_a2) ─────────────
-  (@org_a_id,'USB-C Headset',          'NVT-AUD-001', 0, 15, 89.99,  37.79, @cat_a3, @prov_a2, 0),
-  (@org_a_id,'Bluetooth Headphones',   'NVT-AUD-002', 0, 20, 149.99, 62.99, @cat_a3, @prov_a2, 0),
-  (@org_a_id,'Studio Microphone',      'NVT-AUD-003', 0, 10, 119.99, 50.39, @cat_a3, @prov_a2, 0),
-  (@org_a_id,'Webcam 1080p',           'NVT-AUD-004', 0, 25, 79.99,  33.59, @cat_a3, @prov_a2, 0),
-  (@org_a_id,'Noise Cancel Headphones','NVT-AUD-005', 0, 15, 199.99, 83.99, @cat_a3, @prov_a2, 0),
+  (@org_a_id,'Auriculares USB-C',      'NVT-AUD-001', 0, 15, 89.99,  37.79, @cat_a3, @prov_a2, 0),
+  (@org_a_id,'Auriculares Bluetooth',  'NVT-AUD-002', 0, 20, 149.99, 62.99, @cat_a3, @prov_a2, 0),
+  (@org_a_id,'Micrófono de Estudio',   'NVT-AUD-003', 0, 10, 119.99, 50.39, @cat_a3, @prov_a2, 0),
+  (@org_a_id,'Cámara web 1080p',       'NVT-AUD-004', 0, 25, 79.99,  33.59, @cat_a3, @prov_a2, 0),
+  (@org_a_id,'Auriculares con Cancelación de Ruido','NVT-AUD-005', 0, 15, 199.99, 83.99, @cat_a3, @prov_a2, 0),
   -- ── Org A: Cables & Adapters (cat_a4, prov_a3) ────────────
-  (@org_a_id,'USB-C Hub 7-Port',       'NVT-CAB-001', 0, 30, 59.99,  25.19, @cat_a4, @prov_a3, 0),
-  (@org_a_id,'HDMI Cable 2m',          'NVT-CAB-002', 0, 50, 14.99,   6.29, @cat_a4, @prov_a3, 0),
-  (@org_a_id,'USB-C to DisplayPort',   'NVT-CAB-003', 0, 40, 24.99,  10.49, @cat_a4, @prov_a3, 0),
-  (@org_a_id,'Thunderbolt 4 Dock',     'NVT-CAB-004', 0, 10, 149.99, 62.99, @cat_a4, @prov_a3, 0),
-  (@org_a_id,'Power Bank 20000mAh',    'NVT-CAB-005', 0, 20, 49.99,  20.99, @cat_a4, @prov_a3, 0),
+  (@org_a_id,'Concentrador USB-C 7 Puertos', 'NVT-CAB-001', 0, 30, 59.99,  25.19, @cat_a4, @prov_a3, 0),
+  (@org_a_id,'Cable HDMI 2m',          'NVT-CAB-002', 0, 50, 14.99,   6.29, @cat_a4, @prov_a3, 0),
+  (@org_a_id,'USB-C a DisplayPort',    'NVT-CAB-003', 0, 40, 24.99,  10.49, @cat_a4, @prov_a3, 0),
+  (@org_a_id,'Base Thunderbolt 4',     'NVT-CAB-004', 0, 10, 149.99, 62.99, @cat_a4, @prov_a3, 0),
+  (@org_a_id,'Batería Externa 20000mAh','NVT-CAB-005',0, 20, 49.99,  20.99, @cat_a4, @prov_a3, 0),
   -- ── Org A: Accessories (cat_a5, prov_a3) ──────────────────
-  (@org_a_id,'Laptop Stand Aluminium', 'NVT-ACC-001', 0, 25, 39.99,  16.79, @cat_a5, @prov_a3, 0),
-  (@org_a_id,'Monitor Arm Dual',       'NVT-ACC-002', 0, 12, 89.99,  37.79, @cat_a5, @prov_a3, 0),
-  (@org_a_id,'Cable Management Kit',   'NVT-ACC-003', 0, 30, 19.99,   8.39, @cat_a5, @prov_a3, 0),
-  (@org_a_id,'Anti-glare Screen Filter','NVT-ACC-004',0, 20, 29.99,  12.59, @cat_a5, @prov_a3, 0),
-  (@org_a_id,'Ergonomic Wrist Rest',   'NVT-ACC-005', 0, 25, 24.99,  10.49, @cat_a5, @prov_a3, 0),
+  (@org_a_id,'Soporte de Portátil Aluminio','NVT-ACC-001', 0, 25, 39.99,  16.79, @cat_a5, @prov_a3, 0),
+  (@org_a_id,'Brazo Doble para Monitor','NVT-ACC-002', 0, 12, 89.99,  37.79, @cat_a5, @prov_a3, 0),
+  (@org_a_id,'Kit de Gestión de Cables','NVT-ACC-003', 0, 30, 19.99,   8.39, @cat_a5, @prov_a3, 0),
+  (@org_a_id,'Filtro de Pantalla Antirreflejo','NVT-ACC-004',0, 20, 29.99,  12.59, @cat_a5, @prov_a3, 0),
+  (@org_a_id,'Reposamuñecas Ergonómico','NVT-ACC-005', 0, 25, 24.99,  10.49, @cat_a5, @prov_a3, 0),
   -- ── Org B: Paper & Printing (cat_b1, prov_b1) ─────────────
-  (@org_b_id,'A4 Paper Ream 500sh',    'MID-PPR-001', 0, 50, 5.99,  4.07, @cat_b1, @prov_b1, 0),
-  (@org_b_id,'Premium Photo Paper A4', 'MID-PPR-002', 0, 20, 14.99, 10.19, @cat_b1, @prov_b1, 0),
-  (@org_b_id,'Laser Toner Black',      'MID-PPR-003', 0, 15, 39.99, 27.19, @cat_b1, @prov_b1, 0),
-  (@org_b_id,'Printer Ink Multipack',  'MID-PPR-004', 0, 20, 29.99, 20.39, @cat_b1, @prov_b1, 0),
-  (@org_b_id,'Carbon Copy Paper',      'MID-PPR-005', 0, 30, 8.99,  6.11, @cat_b1, @prov_b1, 0),
+  (@org_b_id,'Resma Papel A4 500h',        'MID-PPR-001', 0, 50, 5.99,  4.07, @cat_b1, @prov_b1, 0),
+  (@org_b_id,'Papel Fotográfico Premium A4','MID-PPR-002', 0, 20, 14.99, 10.19, @cat_b1, @prov_b1, 0),
+  (@org_b_id,'Tóner Láser Negro',          'MID-PPR-003', 0, 15, 39.99, 27.19, @cat_b1, @prov_b1, 0),
+  (@org_b_id,'Paquete Múltiple Tinta Impresora',  'MID-PPR-004', 0, 20, 29.99, 20.39, @cat_b1, @prov_b1, 0),
+  (@org_b_id,'Papel Carbón',               'MID-PPR-005', 0, 30, 8.99,  6.11, @cat_b1, @prov_b1, 0),
   -- ── Org B: Pens & Writing (cat_b2, prov_b1) ───────────────
-  (@org_b_id,'Ballpoint Pens Box 50',  'MID-PEN-001', 0, 30, 7.99,  5.43, @cat_b2, @prov_b1, 0),
-  (@org_b_id,'Rollerball Pen Set 10',  'MID-PEN-002', 0, 25, 12.99, 8.83, @cat_b2, @prov_b1, 0),
-  (@org_b_id,'Highlighter Set 8col',   'MID-PEN-003', 0, 30, 6.99,  4.75, @cat_b2, @prov_b1, 0),
-  (@org_b_id,'Permanent Markers 12pk', 'MID-PEN-004', 0, 25, 8.99,  6.11, @cat_b2, @prov_b1, 0),
-  (@org_b_id,'Correction Tape 5pk',    'MID-PEN-005', 0, 30, 9.99,  6.79, @cat_b2, @prov_b1, 0),
+  (@org_b_id,'Caja de Bolígrafos 50',    'MID-PEN-001', 0, 30, 7.99,  5.43, @cat_b2, @prov_b1, 0),
+  (@org_b_id,'Set de Bolígrafo Líquido 10','MID-PEN-002',0, 25, 12.99, 8.83, @cat_b2, @prov_b1, 0),
+  (@org_b_id,'Set de Subrayadores 8 Col','MID-PEN-003', 0, 30, 6.99,  4.75, @cat_b2, @prov_b1, 0),
+  (@org_b_id,'Rotuladores Permanentes 12 ud','MID-PEN-004', 0, 25, 8.99,  6.11, @cat_b2, @prov_b1, 0),
+  (@org_b_id,'Cinta Correctora 5 ud',    'MID-PEN-005', 0, 30, 9.99,  6.79, @cat_b2, @prov_b1, 0),
   -- ── Org B: Filing & Storage (cat_b3, prov_b2) ─────────────
-  (@org_b_id,'A4 Ring Binder 50mm',    'MID-FIL-001', 0, 30, 5.99,  4.07, @cat_b3, @prov_b2, 0),
-  (@org_b_id,'Suspension Files Box50', 'MID-FIL-002', 0, 15, 22.99, 15.63, @cat_b3, @prov_b2, 0),
-  (@org_b_id,'Plastic Folders 50pk',   'MID-FIL-003', 0, 20, 14.99, 10.19, @cat_b3, @prov_b2, 0),
-  (@org_b_id,'Filing Cabinet 3-Drawer','MID-FIL-004', 0, 5,  59.99, 40.79, @cat_b3, @prov_b2, 0),
-  (@org_b_id,'Document Wallets 100pk', 'MID-FIL-005', 0, 20, 11.99, 8.15, @cat_b3, @prov_b2, 0),
+  (@org_b_id,'Archivador de Anillas A4 50mm', 'MID-FIL-001', 0, 30, 5.99,  4.07, @cat_b3, @prov_b2, 0),
+  (@org_b_id,'Caja Carpetas Colgantes 50',    'MID-FIL-002', 0, 15, 22.99, 15.63, @cat_b3, @prov_b2, 0),
+  (@org_b_id,'Carpetas Plásticas 50 ud',      'MID-FIL-003', 0, 20, 14.99, 10.19, @cat_b3, @prov_b2, 0),
+  (@org_b_id,'Archivador 3 Cajones',          'MID-FIL-004', 0, 5,  59.99, 40.79, @cat_b3, @prov_b2, 0),
+  (@org_b_id,'Fundas para Documentos 100 ud', 'MID-FIL-005', 0, 20, 11.99, 8.15, @cat_b3, @prov_b2, 0),
   -- ── Org B: Desk Accessories (cat_b4, prov_b1) ─────────────
-  (@org_b_id,'Stapler 30-Sheet',       'MID-DSK-001', 0, 20, 12.99, 8.83, @cat_b4, @prov_b1, 0),
-  (@org_b_id,'Staples 5000pk',         'MID-DSK-002', 0, 40, 3.99,  2.71, @cat_b4, @prov_b1, 0),
-  (@org_b_id,'Tape Dispenser + Rolls', 'MID-DSK-003', 0, 25, 7.99,  5.43, @cat_b4, @prov_b1, 0),
-  (@org_b_id,'Scissors Office Grade',  'MID-DSK-004', 0, 30, 6.99,  4.75, @cat_b4, @prov_b1, 0),
-  (@org_b_id,'Sticky Notes 6-Pack',    'MID-DSK-005', 0, 35, 8.99,  6.11, @cat_b4, @prov_b1, 0),
+  (@org_b_id,'Grapadora 30 Hojas',     'MID-DSK-001', 0, 20, 12.99, 8.83, @cat_b4, @prov_b1, 0),
+  (@org_b_id,'Grapas 5000 ud',         'MID-DSK-002', 0, 40, 3.99,  2.71, @cat_b4, @prov_b1, 0),
+  (@org_b_id,'Dispensador de Cinta + Rollos', 'MID-DSK-003', 0, 25, 7.99,  5.43, @cat_b4, @prov_b1, 0),
+  (@org_b_id,'Tijeras Oficina Profesional',    'MID-DSK-004', 0, 30, 6.99,  4.75, @cat_b4, @prov_b1, 0),
+  (@org_b_id,'Notas Adhesivas Paquete 6',      'MID-DSK-005', 0, 35, 8.99,  6.11, @cat_b4, @prov_b1, 0),
   -- ── Org B: Presentation (cat_b5, prov_b2) ─────────────────
-  (@org_b_id,'Whiteboard 90x60cm',     'MID-PRE-001', 0, 8,  34.99, 23.79, @cat_b5, @prov_b2, 0),
-  (@org_b_id,'Whiteboard Markers 8pk', 'MID-PRE-002', 0, 30, 7.99,  5.43, @cat_b5, @prov_b2, 0),
-  (@org_b_id,'Flipchart Easel',        'MID-PRE-003', 0, 5,  49.99, 33.99, @cat_b5, @prov_b2, 0),
-  (@org_b_id,'Presentation Remote',    'MID-PRE-004', 0, 15, 24.99, 16.99, @cat_b5, @prov_b2, 0),
-  (@org_b_id,'Flipchart Pads 2pk',     'MID-PRE-005', 0, 20, 16.99, 11.55, @cat_b5, @prov_b2, 0),
+  (@org_b_id,'Pizarra Blanca 90x60cm', 'MID-PRE-001', 0, 8,  34.99, 23.79, @cat_b5, @prov_b2, 0),
+  (@org_b_id,'Rotuladores Pizarra 8 ud','MID-PRE-002', 0, 30, 7.99,  5.43, @cat_b5, @prov_b2, 0),
+  (@org_b_id,'Caballete para Bloc',    'MID-PRE-003', 0, 5,  49.99, 33.99, @cat_b5, @prov_b2, 0),
+  (@org_b_id,'Mando para Presentaciones','MID-PRE-004',0, 15, 24.99, 16.99, @cat_b5, @prov_b2, 0),
+  (@org_b_id,'Blocs para Caballete 2 ud','MID-PRE-005',0, 20, 16.99, 11.55, @cat_b5, @prov_b2, 0),
   -- ── Org C: Hot Drinks (cat_c1, prov_c1) ───────────────────
-  (@org_c_id,'Ground Coffee 500g',     'ZRO-HOT-001', 0, 20, 7.99,  7.03, @cat_c1, @prov_c1, 0),
-  (@org_c_id,'Instant Coffee 200g',    'ZRO-HOT-002', 0, 25, 4.99,  4.39, @cat_c1, @prov_c1, 0),
-  (@org_c_id,'Tea Bags 80pk',          'ZRO-HOT-003', 0, 30, 3.49,  3.07, @cat_c1, @prov_c1, 0),
-  (@org_c_id,'Hot Chocolate Mix 500g', 'ZRO-HOT-004', 0, 20, 5.99,  5.27, @cat_c1, @prov_c1, 0),
-  (@org_c_id,'Herbal Tea Assorted 40pk','ZRO-HOT-005',0, 25, 2.99,  2.63, @cat_c1, @prov_c1, 0),
+  (@org_c_id,'Café Molido 500g',       'ZRO-HOT-001', 0, 20, 7.99,  7.03, @cat_c1, @prov_c1, 0),
+  (@org_c_id,'Café Soluble 200g',      'ZRO-HOT-002', 0, 25, 4.99,  4.39, @cat_c1, @prov_c1, 0),
+  (@org_c_id,'Bolsitas de Té 80 ud',   'ZRO-HOT-003', 0, 30, 3.49,  3.07, @cat_c1, @prov_c1, 0),
+  (@org_c_id,'Preparado Chocolate Caliente 500g', 'ZRO-HOT-004', 0, 20, 5.99,  5.27, @cat_c1, @prov_c1, 0),
+  (@org_c_id,'Infusiones Surtidas 40 ud','ZRO-HOT-005',0, 25, 2.99,  2.63, @cat_c1, @prov_c1, 0),
   -- ── Org C: Snacks & Sweets (cat_c2, prov_c1) ─────────────
-  (@org_c_id,'Potato Chips 150g',      'ZRO-SNK-001', 0, 40, 1.79,  1.58, @cat_c2, @prov_c1, 0),
-  (@org_c_id,'Mixed Nuts 200g',        'ZRO-SNK-002', 0, 30, 3.99,  3.51, @cat_c2, @prov_c1, 0),
-  (@org_c_id,'Chocolate Bar 100g',     'ZRO-SNK-003', 0, 50, 1.49,  1.31, @cat_c2, @prov_c1, 0),
-  (@org_c_id,'Rice Cakes 130g',        'ZRO-SNK-004', 0, 35, 2.29,  2.02, @cat_c2, @prov_c1, 0),
-  (@org_c_id,'Granola Bars 6pk',       'ZRO-SNK-005', 0, 30, 3.49,  3.07, @cat_c2, @prov_c1, 0),
+  (@org_c_id,'Patatas Fritas 150g',    'ZRO-SNK-001', 0, 40, 1.79,  1.58, @cat_c2, @prov_c1, 0),
+  (@org_c_id,'Frutos Secos Mixtos 200g','ZRO-SNK-002', 0, 30, 3.99,  3.51, @cat_c2, @prov_c1, 0),
+  (@org_c_id,'Tableta de Chocolate 100g','ZRO-SNK-003', 0, 50, 1.49,  1.31, @cat_c2, @prov_c1, 0),
+  (@org_c_id,'Tortitas de Arroz 130g', 'ZRO-SNK-004', 0, 35, 2.29,  2.02, @cat_c2, @prov_c1, 0),
+  (@org_c_id,'Barritas de Granola 6 ud','ZRO-SNK-005', 0, 30, 3.49,  3.07, @cat_c2, @prov_c1, 0),
   -- ── Org C: Cereals & Breakfast (cat_c3, prov_c1) ──────────
-  (@org_c_id,'Rolled Oats 1kg',        'ZRO-CRL-001', 0, 30, 2.49,  2.19, @cat_c3, @prov_c1, 0),
-  (@org_c_id,'Corn Flakes 750g',       'ZRO-CRL-002', 0, 25, 3.29,  2.90, @cat_c3, @prov_c1, 0),
+  (@org_c_id,'Copos de Avena 1kg',     'ZRO-CRL-001', 0, 30, 2.49,  2.19, @cat_c3, @prov_c1, 0),
+  (@org_c_id,'Copos de Maíz 750g',     'ZRO-CRL-002', 0, 25, 3.29,  2.90, @cat_c3, @prov_c1, 0),
   (@org_c_id,'Muesli 500g',            'ZRO-CRL-003', 0, 20, 3.99,  3.51, @cat_c3, @prov_c1, 0),
-  (@org_c_id,'Pancake Mix 500g',       'ZRO-CRL-004', 0, 20, 2.99,  2.63, @cat_c3, @prov_c1, 0),
-  (@org_c_id,'Protein Granola 400g',   'ZRO-CRL-005', 0, 15, 6.99,  6.15, @cat_c3, @prov_c1, 0),
+  (@org_c_id,'Preparado para Tortitas 500g','ZRO-CRL-004', 0, 20, 2.99,  2.63, @cat_c3, @prov_c1, 0),
+  (@org_c_id,'Granola Proteica 400g',  'ZRO-CRL-005', 0, 15, 6.99,  6.15, @cat_c3, @prov_c1, 0),
   -- ── Org C: Cleaning (cat_c4, prov_c1) ─────────────────────
-  (@org_c_id,'Multi-Surface Spray 500ml','ZRO-CLN-001',0,30, 2.49,  2.19, @cat_c4, @prov_c1, 0),
-  (@org_c_id,'Washing Up Liquid 500ml','ZRO-CLN-002', 0, 40, 1.99,  1.75, @cat_c4, @prov_c1, 0),
-  (@org_c_id,'Floor Cleaner 1L',       'ZRO-CLN-003', 0, 25, 3.49,  3.07, @cat_c4, @prov_c1, 0),
-  (@org_c_id,'Bin Bags 30pk',          'ZRO-CLN-004', 0, 20, 4.99,  4.39, @cat_c4, @prov_c1, 0),
-  (@org_c_id,'Sponges 10pk',           'ZRO-CLN-005', 0, 30, 2.99,  2.63, @cat_c4, @prov_c1, 0),
+  (@org_c_id,'Spray Multiusos 500ml',  'ZRO-CLN-001',0,30, 2.49,  2.19, @cat_c4, @prov_c1, 0),
+  (@org_c_id,'Lavavajillas Líquido 500ml','ZRO-CLN-002', 0, 40, 1.99,  1.75, @cat_c4, @prov_c1, 0),
+  (@org_c_id,'Limpiador de Suelos 1L', 'ZRO-CLN-003', 0, 25, 3.49,  3.07, @cat_c4, @prov_c1, 0),
+  (@org_c_id,'Bolsas de Basura 30 ud', 'ZRO-CLN-004', 0, 20, 4.99,  4.39, @cat_c4, @prov_c1, 0),
+  (@org_c_id,'Esponjas 10 ud',         'ZRO-CLN-005', 0, 30, 2.99,  2.63, @cat_c4, @prov_c1, 0),
   -- ── Org C: Beverages (cat_c5, prov_c1) ────────────────────
-  (@org_c_id,'Sparkling Water 1.5L',   'ZRO-BEV-001', 0, 50, 1.09,  0.96, @cat_c5, @prov_c1, 0),
-  (@org_c_id,'Orange Juice 1L',        'ZRO-BEV-002', 0, 30, 2.49,  2.19, @cat_c5, @prov_c1, 0),
-  (@org_c_id,'Oat Milk 1L',            'ZRO-BEV-003', 0, 25, 2.19,  1.93, @cat_c5, @prov_c1, 0),
-  (@org_c_id,'Sports Drink 500ml',     'ZRO-BEV-004', 0, 35, 1.89,  1.66, @cat_c5, @prov_c1, 0),
-  (@org_c_id,'Smoothie 330ml',         'ZRO-BEV-005', 0, 25, 2.99,  2.63, @cat_c5, @prov_c1, 0);
+  (@org_c_id,'Agua con Gas 1.5L',      'ZRO-BEV-001', 0, 50, 1.09,  0.96, @cat_c5, @prov_c1, 0),
+  (@org_c_id,'Zumo de Naranja 1L',     'ZRO-BEV-002', 0, 30, 2.49,  2.19, @cat_c5, @prov_c1, 0),
+  (@org_c_id,'Bebida de Avena 1L',     'ZRO-BEV-003', 0, 25, 2.19,  1.93, @cat_c5, @prov_c1, 0),
+  (@org_c_id,'Bebida Isotónica 500ml', 'ZRO-BEV-004', 0, 35, 1.89,  1.66, @cat_c5, @prov_c1, 0),
+  (@org_c_id,'Batido 330ml',           'ZRO-BEV-005', 0, 25, 2.99,  2.63, @cat_c5, @prov_c1, 0);
 
 -- ════════════════════════════════════════════════════════════════
 -- 7. PRICE HISTORY  (spread over 2 years)
@@ -282,50 +282,50 @@ WHERE p.organization_id = @org_c_id;
 -- 8. CLIENTS
 -- ════════════════════════════════════════════════════════════════
 INSERT INTO clients (organization_id, name, email, phone, is_active) VALUES
-  (@org_a_id,'Acme Corp',          'compras@acme.test',        '+34 91 100 0001', 1),
-  (@org_a_id,'BlueSky Agency',     'admin@bluesky.test',       '+34 91 100 0002', 1),
-  (@org_a_id,'Vertex Studios',     'office@vertex.test',       '+34 91 100 0003', 1),
-  (@org_a_id,'Nexum IT',           'stock@nexum.test',         '+34 91 100 0004', 1),
-  (@org_a_id,'Fortis Legal',       'administracion@fortis.test','+34 91 100 0005',1),
-  (@org_a_id,'Orbit Media',        'compras@orbit.test',       '+34 93 200 0006', 1),
-  (@org_a_id,'Crest Analytics',    'orders@crest.test',        '+34 93 200 0007', 1),
-  (@org_a_id,'Pinnacle Design',    'supplies@pinnacle.test',   '+34 93 200 0008', 1),
-  (@org_a_id,'Apex Consulting',    'procurement@apex.test',    '+34 96 300 0009', 1),
-  (@org_a_id,'ZenSoft Solutions',  'it@zensoft.test',          '+34 96 300 0010', 1),
-  (@org_a_id,'Maple Startups',     'office@maple.test',        '+34 94 400 0011', 1),
-  (@org_a_id,'Ironclad Security',  'orders@ironclad.test',     '+34 94 400 0012', 1),
+  (@org_a_id,'Acme Corporación',      'compras@acme.test',        '+34 91 100 0001', 1),
+  (@org_a_id,'Agencia CieloAzul',     'administracion@bluesky.test', '+34 91 100 0002', 1),
+  (@org_a_id,'Estudios Vertex',       'oficina@vertex.test',      '+34 91 100 0003', 1),
+  (@org_a_id,'Nexum Informática',     'inventario@nexum.test',    '+34 91 100 0004', 1),
+  (@org_a_id,'Fortis Legal',          'administracion@fortis.test','+34 91 100 0005',1),
+  (@org_a_id,'Medios Órbita',         'compras@orbit.test',       '+34 93 200 0006', 1),
+  (@org_a_id,'Analítica Crest',       'pedidos@crest.test',       '+34 93 200 0007', 1),
+  (@org_a_id,'Diseño Cúspide',        'suministros@pinnacle.test','+34 93 200 0008', 1),
+  (@org_a_id,'Consultoría Apex',      'compras@apex.test',        '+34 96 300 0009', 1),
+  (@org_a_id,'Soluciones ZenSoft',    'informatica@zensoft.test', '+34 96 300 0010', 1),
+  (@org_a_id,'Emprendimientos Maple', 'oficina@maple.test',       '+34 94 400 0011', 1),
+  (@org_a_id,'Seguridad Ironclad',    'pedidos@ironclad.test',    '+34 94 400 0012', 1),
 
-  (@org_b_id,'ClearPath Admin',    'pedidos@clearpath.test',   '+34 91 500 0001', 1),
-  (@org_b_id,'Redwood Office',     'admin@redwood.test',       '+34 91 500 0002', 1),
-  (@org_b_id,'Goldstar Notary',    'suministros@goldstar.test','+34 91 500 0003', 1),
-  (@org_b_id,'Birch Partners',     'compras@birch.test',       '+34 93 600 0004', 1),
-  (@org_b_id,'Cedarwood Assoc',    'office@cedarwood.test',    '+34 93 600 0005', 1),
-  (@org_b_id,'Silverthorn Law',    'admin@silverthorn.test',   '+34 93 600 0006', 1),
-  (@org_b_id,'NorthPeak HR',       'pedidos@northpeak.test',   '+34 94 700 0007', 1),
-  (@org_b_id,'Crossroads Print',   'orders@crossroads.test',   '+34 94 700 0008', 1),
-  (@org_b_id,'BlueLine Services',  'compras@blueline.test',    '+34 94 700 0009', 1),
-  (@org_b_id,'Harbour Estates',    'office@harbour.test',      '+34 96 800 0010', 1),
+  (@org_b_id,'Administración RutaClara', 'pedidos@clearpath.test',   '+34 91 500 0001', 1),
+  (@org_b_id,'Oficina Redwood',          'administracion@redwood.test', '+34 91 500 0002', 1),
+  (@org_b_id,'Notaría Goldstar',         'suministros@goldstar.test','+34 91 500 0003', 1),
+  (@org_b_id,'Socios Birch',             'compras@birch.test',       '+34 93 600 0004', 1),
+  (@org_b_id,'Asoc. Cedarwood',          'oficina@cedarwood.test',   '+34 93 600 0005', 1),
+  (@org_b_id,'Bufete Silverthorn',       'administracion@silverthorn.test', '+34 93 600 0006', 1),
+  (@org_b_id,'RRHH NorthPeak',           'pedidos@northpeak.test',   '+34 94 700 0007', 1),
+  (@org_b_id,'Impresión Crossroads',     'pedidos@crossroads.test',  '+34 94 700 0008', 1),
+  (@org_b_id,'Servicios BlueLine',       'compras@blueline.test',    '+34 94 700 0009', 1),
+  (@org_b_id,'Inmuebles Harbour',        'oficina@harbour.test',     '+34 96 800 0010', 1),
 
-  (@org_c_id,'Casa Martinez',      'pedidos@casamartinez.test','+34 91 900 0001', 1),
+  (@org_c_id,'Casa Martínez',      'pedidos@casamartinez.test','+34 91 900 0001', 1),
   (@org_c_id,'Cafeteria Sol',      'compras@cafeteriasol.test','+34 91 900 0002', 1),
   (@org_c_id,'Bar La Esquina',     'pedidos@laesquina.test',   '+34 91 900 0003', 1),
-  (@org_c_id,'Tienda El Rincón',   'stock@elrincon.test',      '+34 91 900 0004', 1),
-  (@org_c_id,'Mini Market Lola',   'orders@mmlola.test',       '+34 91 900 0005', 1),
+  (@org_c_id,'Tienda El Rincón',   'inventario@elrincon.test', '+34 91 900 0004', 1),
+  (@org_c_id,'Minimercado Lola',   'pedidos@mmlola.test',      '+34 91 900 0005', 1),
   (@org_c_id,'Bodega Norte',       'compras@bodeganorte.test', '+34 91 900 0006', 1),
   (@org_c_id,'Kiosko Central',     'pedidos@kioskoc.test',     '+34 91 900 0007', 1),
-  (@org_c_id,'Despacho Rápido',    'admin@despachorapido.test','+34 91 900 0008', 1);
+  (@org_c_id,'Despacho Rápido',    'administracion@despachorapido.test','+34 91 900 0008', 1);
 
 -- ════════════════════════════════════════════════════════════════
 -- 9. BUNDLES + BUNDLE ITEMS
 -- ════════════════════════════════════════════════════════════════
 INSERT INTO bundles (organization_id, name, description, discount_pct, active) VALUES
-  (@org_a_id,'Office Setup Kit',   'Monitor + keyboard + webcam combo', 12.00, 1),
-  (@org_a_id,'Gamer Bundle',       'Gaming mouse + RGB keyboard + headset', 15.00, 1),
-  (@org_a_id,'Studio Creator Kit', 'Webcam + mic + USB hub',           10.00, 1),
-  (@org_a_id,'Travel Pack',        'Portable monitor + laptop stand + USB-C hub', 10.00, 1),
-  (@org_b_id,'Desk Starter',       'Paper + pens + stapler combo',     8.00, 1),
-  (@org_b_id,'Filing Kit',         'Binders + folders + suspension files', 7.00, 1),
-  (@org_c_id,'Budget Breakfast',   'Oats + tea + coffee starter deal', 5.00, 1);
+  (@org_a_id,'Kit de Oficina',      'Monitor + teclado + cámara web', 12.00, 1),
+  (@org_a_id,'Lote para Juegos',    'Ratón para juegos + teclado RGB + auriculares', 15.00, 1),
+  (@org_a_id,'Kit Creador Estudio', 'Cámara web + micrófono + concentrador USB', 10.00, 1),
+  (@org_a_id,'Lote de Viaje',       'Monitor portátil + soporte portátil + concentrador USB-C', 10.00, 1),
+  (@org_b_id,'Lote Escritorio',     'Papel + bolígrafos + grapadora', 8.00, 1),
+  (@org_b_id,'Kit Archivo',         'Archivadores + carpetas + carpetas colgantes', 7.00, 1),
+  (@org_c_id,'Desayuno Económico',  'Avena + té + café', 5.00, 1);
 
 SET @bun_a1 = (SELECT id FROM bundles WHERE organization_id=@org_a_id ORDER BY id LIMIT 1 OFFSET 0);
 SET @bun_a2 = (SELECT id FROM bundles WHERE organization_id=@org_a_id ORDER BY id LIMIT 1 OFFSET 1);
@@ -459,7 +459,7 @@ SELECT organization_id, id,
     WHEN organization_id = @org_b_id THEN  60 + MOD(id,  60)   --  60-119 units
     ELSE                                   20 + MOD(id,  25)   --  20-44 units
   END,
-  'INITIAL', 'Opening stock', DATE_SUB(NOW(), INTERVAL 730 DAY)
+  'INITIAL', 'Stock inicial', DATE_SUB(NOW(), INTERVAL 730 DAY)
 FROM products
 WHERE organization_id IN (@org_a_id, @org_b_id, @org_c_id);
 
