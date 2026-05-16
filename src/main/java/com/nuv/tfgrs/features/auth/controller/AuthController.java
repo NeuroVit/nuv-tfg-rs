@@ -232,7 +232,7 @@ public class AuthController {
         } catch (Exception ex) {
             String exchangeErrorDetail = ex.getMessage();
             if (ex instanceof RestClientResponseException restEx) {
-                exchangeErrorDetail = "status=" + restEx.getRawStatusCode() + ", body=" + restEx.getResponseBodyAsString();
+                exchangeErrorDetail = "status=" + restEx.getStatusCode().value() + ", body=" + restEx.getResponseBodyAsString();
             }
             log.error(
                     "Google mobile callback token exchange failed: callbackUri={}, detail={}",
