@@ -31,3 +31,4 @@ replay_pid*
 
 # Maven build output
 target/
+target_*/
