@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -229,13 +230,15 @@ public class VentaServiceImpl implements VentaService {
         updateStockAndCreateMovements(saleId, saleByProduct, productsById, organizationId);
 
         VentaResponse response = fetchSaleById(saleId, organizationId);
-        clienteRepository.findByIdAndOrganizationId(request.clientId(), organizationId).ifPresent(cliente -> {
-            try {
-                ventaEmailService.enviarComprobanteVenta(response, cliente);
-            } catch (Exception ex) {
-                log.warn("No se pudo enviar comprobante de venta #{} al cliente {}", saleId, cliente.getId(), ex);
-            }
-        });
+        clienteRepository.findByIdAndOrganizationId(request.clientId(), organizationId).ifPresent(cliente ->
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        ventaEmailService.enviarComprobanteVenta(response, cliente);
+                    } catch (Exception ex) {
+                        log.warn("No se pudo enviar comprobante de venta #{} al cliente {}", saleId, cliente.getId(), ex);
+                    }
+                })
+        );
         return response;
     }
 
@@ -356,7 +359,11 @@ public class VentaServiceImpl implements VentaService {
                     .movedAt(LocalDateTime.now())
                     .build();
             movimientoStockRepository.save(movement);
-            stockAlertManager.syncForProduct(saved);
+            try {
+                stockAlertManager.syncForProduct(saved);
+            } catch (Exception ex) {
+                log.warn("No se pudieron sincronizar alertas para producto {} en venta #{}", saved.getId(), saleId, ex);
+            }
         }
     }
 
