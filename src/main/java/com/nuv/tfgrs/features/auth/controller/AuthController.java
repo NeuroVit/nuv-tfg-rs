@@ -28,6 +28,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -127,8 +128,8 @@ public class AuthController {
             HttpServletRequest request
     ) {
         String validatedDeepLink = resolveDeepLink(deeplink);
-        String stateEnvelope = buildStateEnvelope(state, validatedDeepLink);
         String callbackUri = resolveMobileCallbackUrlFromStartRequest(request);
+        String stateEnvelope = buildStateEnvelope(state, validatedDeepLink, callbackUri);
 
         log.info(
                 "Google mobile start: clientId={}, redirectUri={}, deepLink={}",
@@ -163,15 +164,18 @@ public class AuthController {
             @RequestParam(value = "error", required = false) String error,
             HttpServletRequest request
     ) {
-        String callbackUri = resolveMobileCallbackUrlFromCallbackRequest(request);
         MobileState mobileState = parseStateEnvelope(stateEnvelope);
+        String callbackUri = (mobileState.callbackUri() != null && !mobileState.callbackUri().isBlank())
+                ? mobileState.callbackUri()
+                : resolveMobileCallbackUrlFromCallbackRequest(request);
         String deeplink = mobileState.deeplink();
         String originalState = mobileState.originalState();
         log.info(
-                "Google mobile callback: hasCode={}, hasError={}, deepLink={}",
+                "Google mobile callback: hasCode={}, hasError={}, deepLink={}, callbackUri={}",
                 code != null && !code.isBlank(),
                 error != null && !error.isBlank(),
-                deeplink
+                deeplink,
+                callbackUri
         );
 
         if (error != null && !error.isBlank()) {
@@ -226,7 +230,16 @@ public class AuthController {
             log.info("Google mobile callback success redirect: {}", successUri);
             return buildDeepLinkRedirectResponse(request, successUri);
         } catch (Exception ex) {
-            log.error("Google mobile callback token exchange failed", ex);
+            String exchangeErrorDetail = ex.getMessage();
+            if (ex instanceof RestClientResponseException restEx) {
+                exchangeErrorDetail = "status=" + restEx.getRawStatusCode() + ", body=" + restEx.getResponseBodyAsString();
+            }
+            log.error(
+                    "Google mobile callback token exchange failed: callbackUri={}, detail={}",
+                    callbackUri,
+                    exchangeErrorDetail,
+                    ex
+            );
             return buildDeepLinkRedirectResponse(
                     request,
                     buildDeepLinkUri(deeplink, "error", originalState, null, "token_exchange_failed")
@@ -542,9 +555,10 @@ public class AuthController {
                 .toList();
     }
 
-    private String buildStateEnvelope(String state, String deeplink) {
+    private String buildStateEnvelope(String state, String deeplink, String callbackUri) {
         String safeState = state == null ? "" : state.trim();
-        String payload = safeState + "|" + deeplink;
+        String safeCallbackUri = normalizeCallbackUri(callbackUri);
+        String payload = safeState + "|" + deeplink + "|" + safeCallbackUri;
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
@@ -563,9 +577,17 @@ public class AuthController {
                 return new MobileState(payload, googleMobileDefaultDeepLink);
             }
 
+            int secondSplit = payload.indexOf('|', split + 1);
+            if (secondSplit < 0) {
+                String originalState = payload.substring(0, split);
+                String deeplink = resolveDeepLink(payload.substring(split + 1));
+                return new MobileState(originalState, deeplink);
+            }
+
             String originalState = payload.substring(0, split);
-            String deeplink = resolveDeepLink(payload.substring(split + 1));
-            return new MobileState(originalState, deeplink);
+            String deeplink = resolveDeepLink(payload.substring(split + 1, secondSplit));
+            String callbackUri = normalizeCallbackUri(payload.substring(secondSplit + 1));
+            return new MobileState(originalState, deeplink, callbackUri);
         } catch (Exception ex) {
             return new MobileState("", googleMobileDefaultDeepLink);
         }
@@ -609,7 +631,27 @@ public class AuthController {
         consumedMobileCredentials.entrySet().removeIf(entry -> entry.getValue().expiresAtEpochMs() < now);
     }
 
-    private record MobileState(String originalState, String deeplink) {}
+    private String normalizeCallbackUri(String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return googleMobileCallbackUrl;
+        }
+        try {
+            URI parsed = URI.create(candidate.trim());
+            String scheme = parsed.getScheme();
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                return googleMobileCallbackUrl;
+            }
+            return parsed.toString();
+        } catch (Exception ex) {
+            return googleMobileCallbackUrl;
+        }
+    }
+
+    private record MobileState(String originalState, String deeplink, String callbackUri) {
+        private MobileState(String originalState, String deeplink) {
+            this(originalState, deeplink, null);
+        }
+    }
     private record PendingMobileCredential(String credential, long expiresAtEpochMs) {}
 
     private String maskClientId(String clientId) {
