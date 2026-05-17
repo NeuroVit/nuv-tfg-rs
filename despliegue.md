@@ -48,6 +48,43 @@ CORS_ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:5173
 CORS_ALLOWED_ORIGIN_PATTERNS=https://*.up.railway.app
 ```
 
+### Configuración IA recomendada por entorno
+
+Backend soporta múltiples proveedores Spring AI. Selección por variable:
+
+```env
+SPRING_AI_MODEL_CHAT=ollama | openai
+```
+
+#### Local (Ollama)
+
+```env
+SPRING_AI_MODEL_CHAT=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CHAT_MODEL=llama3.2:3b
+REPORTES_AI_ENABLED=true
+REPORTES_AI_TIMEOUT=90s
+SPRING_AI_RETRY_MAX_ATTEMPTS=1
+```
+
+#### Producción (API hospedada compatible OpenAI)
+
+```env
+SPRING_AI_MODEL_CHAT=openai
+OPENAI_API_KEY=<api-key>
+OPENAI_BASE_URL=https://api.openai.com
+OPENAI_CHAT_MODEL=gpt-4o-mini
+REPORTES_AI_ENABLED=true
+REPORTES_AI_TIMEOUT=90s
+SPRING_AI_RETRY_MAX_ATTEMPTS=1
+```
+
+Si no hay proveedor IA disponible en producción:
+
+```env
+REPORTES_AI_ENABLED=false
+```
+
 Notas:
 - `PORT` lo provee Railway automáticamente, pero puede definirse manualmente por claridad.
 - `DATABASE_URL` debe ser una URL JDBC (`jdbc:mysql://...`).

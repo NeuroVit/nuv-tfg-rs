@@ -14,16 +14,26 @@ import com.nuv.tfgrs.features.inventario.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.features.productos.repository.ProductoRepository;
 import com.nuv.tfgrs.features.reportes.repository.ReporteRepository;
 import com.nuv.tfgrs.features.reportes.service.ReporteService;
+import com.nuv.tfgrs.features.reportes.service.ia.ReporteAnalisisContextoOrganizacionalBuilder;
+import com.nuv.tfgrs.features.reportes.service.ia.ReporteAnalisisIaEstado;
+import com.nuv.tfgrs.features.reportes.service.ia.ReporteAnalisisIaResultado;
+import com.nuv.tfgrs.features.reportes.service.ia.ReporteAnalisisIaService;
 import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.client.ResourceAccessException;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.concurrent.TimeoutException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +41,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReporteServiceImpl implements ReporteService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -42,6 +53,26 @@ public class ReporteServiceImpl implements ReporteService {
     private final MovimientoStockRepository movimientoStockRepository;
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final CurrentOrganizationResolver currentOrganizationResolver;
+    private final ReporteAnalisisIaService reporteAnalisisIaService;
+    private final ReporteAnalisisContextoOrganizacionalBuilder contextoOrganizacionalBuilder;
+
+    @Value("${reportes.ai.enabled:true}")
+    private boolean reportesAiEnabled;
+
+    @Value("${reportes.ai.timeout:20s}")
+    private String reportesAiTimeoutRaw;
+
+    @Value("${reportes.ai.prompt-version:v1}")
+    private String reportesAiPromptVersion;
+
+    @Value("${spring.ai.model.chat:ollama}")
+    private String chatProvider;
+
+    @Value("${spring.ai.ollama.chat.model:${spring.ai.ollama.chat.options.model:llama3.2}}")
+    private String ollamaChatModel;
+
+    @Value("${spring.ai.openai.chat.options.model:gpt-4o-mini}")
+    private String openAiChatModel;
 
     @Override
     @Transactional(readOnly = true)
@@ -70,6 +101,7 @@ public class ReporteServiceImpl implements ReporteService {
     @Transactional
     public ReporteResponse generar(CrearReporteRequest request, String username, Long organizationId) {
         String datos = generarDatos(request.getTipo(), organizationId);
+        ReporteAnalisisIaResultado analisisIa = generarAnalisisIa(request.getTipo(), datos, organizationId);
 
         Reporte reporte = Reporte.builder()
                 .organizationId(organizationId)
@@ -77,6 +109,11 @@ public class ReporteServiceImpl implements ReporteService {
                 .tipo(request.getTipo())
                 .descripcion(request.getDescripcion())
                 .datos(datos)
+                .analisisIa(analisisIa.analisis())
+                .analisisIaEstado(analisisIa.estado().name())
+                .analisisIaModelo(analisisIa.modelo())
+                .analisisIaGeneradoEn(analisisIa.generadoEn())
+                .analisisIaError(analisisIa.error())
                 .generadoPor(username)
                 .build();
 
@@ -133,19 +170,103 @@ public class ReporteServiceImpl implements ReporteService {
                 }
                 case "CLIENTES" -> {
                     List<Cliente> clientes = clienteRepository.findByOrganizationIdOrderByNameAsc(organizationId);
+                    MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
+
+                    Map<String, Object> ventas30d = jdbcTemplate.queryForMap(
+                            """
+                                    SELECT
+                                      COUNT(DISTINCT client_id) AS clientesConCompras30d,
+                                      COALESCE(SUM(total_amount),0) AS ingresosClientes30d,
+                                      COALESCE(AVG(total_amount),0) AS ticketPromedio30d
+                                    FROM sales
+                                    WHERE organization_id = :organizationId
+                                      AND client_id IS NOT NULL
+                                      AND sold_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                                    """,
+                            params
+                    );
+
+                    Long clientesConComprasHistorico = jdbcTemplate.queryForObject(
+                            """
+                                    SELECT COUNT(DISTINCT client_id)
+                                    FROM sales
+                                    WHERE organization_id = :organizationId
+                                      AND client_id IS NOT NULL
+                                    """,
+                            params, Long.class
+                    );
+
+                    List<Map<String, Object>> topClientes30d = jdbcTemplate.queryForList(
+                            """
+                                    SELECT
+                                      c.name AS nombre,
+                                      COUNT(s.id) AS totalVentas,
+                                      ROUND(SUM(s.total_amount),2) AS ingresos,
+                                      MAX(s.sold_at) AS ultimaCompra
+                                    FROM sales s
+                                    JOIN clients c ON c.id = s.client_id
+                                    WHERE s.organization_id = :organizationId
+                                      AND c.organization_id = :organizationId
+                                      AND s.sold_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                                    GROUP BY c.id, c.name
+                                    ORDER BY ingresos DESC
+                                    LIMIT 5
+                                    """,
+                            params
+                    );
+
+                    List<Map<String, Object>> clientesSinCompraReciente = jdbcTemplate.queryForList(
+                            """
+                                    SELECT
+                                      c.name AS nombre,
+                                      MAX(s.sold_at) AS ultimaCompra,
+                                      COUNT(s.id) AS totalVentasHistoricas
+                                    FROM clients c
+                                    LEFT JOIN sales s
+                                      ON s.client_id = c.id
+                                     AND s.organization_id = :organizationId
+                                    WHERE c.organization_id = :organizationId
+                                      AND c.is_active = true
+                                    GROUP BY c.id, c.name
+                                    HAVING MAX(s.sold_at) IS NULL
+                                       OR MAX(s.sold_at) < DATE_SUB(NOW(), INTERVAL 90 DAY)
+                                    ORDER BY ultimaCompra ASC
+                                    LIMIT 5
+                                    """,
+                            params
+                    );
+
+                    long totalClientes = clientes.size();
                     long activos = clientes.stream().filter(c -> Boolean.TRUE.equals(c.getActive())).count();
+                    long clientesConCompras30d = toLong(ventas30d.get("clientesConCompras30d"));
+                    long historicos = clientesConComprasHistorico != null ? clientesConComprasHistorico : 0L;
+                    long sinComprasHistorico = Math.max(0L, totalClientes - historicos);
+                    long sinCompras30d = Math.max(0L, totalClientes - clientesConCompras30d);
 
-                    Long nuevos30d = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM clients " +
-                                    "WHERE organization_id = :organizationId " +
-                                    "AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
-                            new MapSqlParameterSource("organizationId", organizationId), Long.class);
-
-                    datos.put("totalClientes", clientes.size());
+                    datos.put("totalClientes", totalClientes);
                     datos.put("clientesActivos", activos);
-                    datos.put("clientesArchivados", clientes.size() - activos);
-                    datos.put("nuevosUltimos30Dias", nuevos30d != null ? nuevos30d : 0);
-                    datos.put("listado", clientes.stream().map(c -> Map.of(
+                    datos.put("clientesArchivados", totalClientes - activos);
+                    datos.put("nuevosUltimos30Dias", clientes.stream()
+                            .filter(c -> c.getCreatedAt() != null && c.getCreatedAt().isAfter(LocalDateTime.now().minusDays(30)))
+                            .count());
+                    datos.put("clientesConComprasHistorico", historicos);
+                    datos.put("clientesSinComprasHistorico", sinComprasHistorico);
+                    datos.put("clientesConCompras30Dias", clientesConCompras30d);
+                    datos.put("clientesSinCompras30Dias", sinCompras30d);
+                    datos.put("ingresosClientes30Dias", Math.round(toDouble(ventas30d.get("ingresosClientes30d")) * 100.0) / 100.0);
+                    datos.put("ticketPromedioClientes30Dias", Math.round(toDouble(ventas30d.get("ticketPromedio30d")) * 100.0) / 100.0);
+                    datos.put("topClientes30Dias", topClientes30d.stream().map(r -> Map.of(
+                            "nombre", r.get("nombre"),
+                            "totalVentas", toLong(r.get("totalVentas")),
+                            "ingresos", Math.round(toDouble(r.get("ingresos")) * 100.0) / 100.0,
+                            "ultimaCompra", r.get("ultimaCompra") != null ? r.get("ultimaCompra").toString() : "—"
+                    )).collect(Collectors.toList()));
+                    datos.put("clientesSinCompraReciente", clientesSinCompraReciente.stream().map(r -> Map.of(
+                            "nombre", r.get("nombre"),
+                            "ultimaCompra", r.get("ultimaCompra") != null ? r.get("ultimaCompra").toString() : "—",
+                            "totalVentasHistoricas", toLong(r.get("totalVentasHistoricas"))
+                    )).collect(Collectors.toList()));
+                    datos.put("listado", clientes.stream().limit(15).map(c -> Map.of(
                             "nombre", c.getName(),
                             "email", c.getEmail() != null ? c.getEmail() : "—",
                             "activo", Boolean.TRUE.equals(c.getActive())
@@ -239,6 +360,93 @@ public class ReporteServiceImpl implements ReporteService {
         return 0.0;
     }
 
+    private ReporteAnalisisIaResultado generarAnalisisIa(String tipoReporte, String datosReporteJson, Long organizationId) {
+        if (!reportesAiEnabled) {
+            return new ReporteAnalisisIaResultado(
+                    null,
+                    ReporteAnalisisIaEstado.NO_DISPONIBLE,
+                    resolveActiveModelName(),
+                    null,
+                    "Análisis IA deshabilitado por configuración"
+            );
+        }
+
+        try {
+            Map<String, Object> contexto = contextoOrganizacionalBuilder.build(organizationId);
+            return reporteAnalisisIaService.analizar(
+                    tipoReporte,
+                    datosReporteJson,
+                    contexto,
+                    resolveActiveModelName(),
+                    parseTimeout(),
+                    reportesAiPromptVersion
+            );
+        } catch (Exception ex) {
+            Throwable root = rootCause(ex);
+            ReporteAnalisisIaEstado estado = isIaUnavailable(root)
+                    ? ReporteAnalisisIaEstado.NO_DISPONIBLE
+                    : ReporteAnalisisIaEstado.ERROR;
+            log.warn(
+                    "No se pudo generar analisis IA para tipo={} orgId={} estado={} causa={}",
+                    tipoReporte,
+                    organizationId,
+                    estado,
+                    formatError(root)
+            );
+            return new ReporteAnalisisIaResultado(
+                    null,
+                    estado,
+                    resolveActiveModelName(),
+                    null,
+                    truncateError(formatError(root))
+            );
+        }
+    }
+
+    private Duration parseTimeout() {
+        return DurationStyle.detectAndParse(reportesAiTimeoutRaw);
+    }
+
+    private String truncateError(String message) {
+        String safe = message == null || message.isBlank() ? "Error desconocido al generar analisis IA" : message;
+        return safe.length() <= 500 ? safe : safe.substring(0, 500);
+    }
+
+    private String formatError(Throwable throwable) {
+        if (throwable == null) {
+            return "Error desconocido al generar analisis IA";
+        }
+        String className = throwable.getClass().getSimpleName();
+        String message = throwable.getMessage();
+        if (message == null || message.isBlank()) {
+            return className;
+        }
+        return className + ": " + message;
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private boolean isIaUnavailable(Throwable throwable) {
+        return throwable instanceof TimeoutException
+                || throwable instanceof ResourceAccessException
+                || throwable instanceof java.net.ConnectException
+                || (throwable.getMessage() != null
+                && throwable.getMessage().toLowerCase().contains("connection refused"));
+    }
+
+    private String resolveActiveModelName() {
+        if ("openai".equalsIgnoreCase(chatProvider)) {
+            return openAiChatModel;
+        }
+        return ollamaChatModel;
+    }
+
     private ReporteResponse toResponse(Reporte r) {
         return ReporteResponse.builder()
                 .id(r.getId())
@@ -246,6 +454,11 @@ public class ReporteServiceImpl implements ReporteService {
                 .tipo(r.getTipo())
                 .descripcion(r.getDescripcion())
                 .datos(r.getDatos())
+                .analisisIa(r.getAnalisisIa())
+                .analisisIaEstado(r.getAnalisisIaEstado())
+                .analisisIaModelo(r.getAnalisisIaModelo())
+                .analisisIaGeneradoEn(r.getAnalisisIaGeneradoEn())
+                .analisisIaError(r.getAnalisisIaError())
                 .generadoPor(r.getGeneradoPor())
                 .createdAt(r.getCreatedAt())
                 .build();
