@@ -27,6 +27,9 @@ public class Reporte {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "organization_id", nullable = false)
+    private Long organizationId;
+
     @Column(nullable = false, length = 255)
     private String nombre;
 
@@ -42,6 +45,21 @@ public class Reporte {
     @Column(columnDefinition = "LONGTEXT")
     private String datos;
 
+    @Column(name = "analisis_ia", columnDefinition = "LONGTEXT")
+    private String analisisIa;
+
+    @Column(name = "analisis_ia_estado", nullable = false, length = 30)
+    private String analisisIaEstado;
+
+    @Column(name = "analisis_ia_modelo", length = 100)
+    private String analisisIaModelo;
+
+    @Column(name = "analisis_ia_generado_en")
+    private LocalDateTime analisisIaGeneradoEn;
+
+    @Column(name = "analisis_ia_error", length = 500)
+    private String analisisIaError;
+
     @Column(name = "generado_por", length = 255)
     private String generadoPor;
 
@@ -56,6 +74,9 @@ public class Reporte {
         LocalDateTime now = LocalDateTime.now();
         createdAt = now;
         updatedAt = now;
+        if (analisisIaEstado == null || analisisIaEstado.isBlank()) {
+            analisisIaEstado = "NO_DISPONIBLE";
+        }
     }
 
     @PreUpdate

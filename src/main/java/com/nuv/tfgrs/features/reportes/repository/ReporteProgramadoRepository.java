@@ -6,9 +6,12 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ReporteProgramadoRepository extends JpaRepository<ReporteProgramado, Long> {
-    List<ReporteProgramado> findAllByOrderByCreatedAtDesc();
-    List<ReporteProgramado> findByActivoTrueAndProximaEjecucionLessThanEqual(LocalDateTime now);
+    List<ReporteProgramado> findAllByOrganizationIdOrderByCreatedAtDesc(Long organizationId);
+    List<ReporteProgramado> findByActivoTrueAndOrganizationIdIsNotNullAndProximaEjecucionLessThanEqual(LocalDateTime now);
+    Optional<ReporteProgramado> findByIdAndOrganizationId(Long id, Long organizationId);
+    boolean existsByIdAndOrganizationId(Long id, Long organizationId);
 }

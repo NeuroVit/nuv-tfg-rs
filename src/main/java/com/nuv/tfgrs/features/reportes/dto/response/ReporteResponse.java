@@ -13,6 +13,11 @@ public class ReporteResponse {
     private String tipo;
     private String descripcion;
     private String datos;
+    private String analisisIa;
+    private String analisisIaEstado;
+    private String analisisIaModelo;
+    private LocalDateTime analisisIaGeneradoEn;
+    private String analisisIaError;
     private String generadoPor;
     private LocalDateTime createdAt;
 }

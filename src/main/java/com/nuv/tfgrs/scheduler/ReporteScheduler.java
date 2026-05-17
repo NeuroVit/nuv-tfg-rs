@@ -28,7 +28,7 @@ public class ReporteScheduler {
     public void ejecutarProgramados() {
         LocalDateTime now = LocalDateTime.now();
         List<ReporteProgramado> pending =
-                reporteProgramadoRepository.findByActivoTrueAndProximaEjecucionLessThanEqual(now);
+                reporteProgramadoRepository.findByActivoTrueAndOrganizationIdIsNotNullAndProximaEjecucionLessThanEqual(now);
 
         if (pending.isEmpty()) return;
 
@@ -43,7 +43,11 @@ public class ReporteScheduler {
                 req.setTipo(programado.getTipo());
                 req.setDescripcion("Generado automáticamente (" + programado.getFrecuencia().toLowerCase() + ")");
 
-                reporteService.generar(req, programado.getCreadoPor() != null ? programado.getCreadoPor() : "Sistema");
+                reporteService.generar(
+                        req,
+                        programado.getCreadoPor() != null ? programado.getCreadoPor() : "Sistema",
+                        programado.getOrganizationId()
+                );
 
                 programado.setUltimaEjecucion(now);
                 programado.setProximaEjecucion(
