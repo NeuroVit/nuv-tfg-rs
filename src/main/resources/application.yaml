@@ -35,10 +35,26 @@ spring:
     validate-on-migrate: false
 
   ai:
+    model:
+      chat: ${SPRING_AI_MODEL_CHAT:ollama}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
-        model: llama3.2
+        model: ${OLLAMA_CHAT_MODEL:llama3.2}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
+  retry:
+    max-attempts: ${SPRING_AI_RETRY_MAX_ATTEMPTS:1}
+
+reportes:
+  ai:
+    enabled: ${REPORTES_AI_ENABLED:true}
+    timeout: ${REPORTES_AI_TIMEOUT:20s}
+    prompt-version: v1
 
 server:
   port: ${PORT:8080}

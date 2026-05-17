@@ -12,6 +12,7 @@ import java.util.List;
 @Repository
 public interface MovimientoStockRepository extends JpaRepository<MovimientoStock, Long> {
     List<MovimientoStock> findByOrganizationIdAndProductIdOrderByMovedAtDesc(Long organizationId, Long productId);
+    List<MovimientoStock> findByOrganizationIdOrderByMovedAtDesc(Long organizationId);
 
     @Query("select ms from MovimientoStock ms join fetch ms.product where ms.organizationId = :organizationId order by ms.movedAt desc")
     List<MovimientoStock> findLatestWithProduct(@Param("organizationId") Long organizationId, Pageable pageable);

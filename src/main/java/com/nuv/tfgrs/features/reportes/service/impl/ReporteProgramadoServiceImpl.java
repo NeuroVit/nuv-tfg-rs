@@ -5,6 +5,7 @@ import com.nuv.tfgrs.features.reportes.dto.response.ReporteProgramadoResponse;
 import com.nuv.tfgrs.features.reportes.entity.ReporteProgramado;
 import com.nuv.tfgrs.features.reportes.repository.ReporteProgramadoRepository;
 import com.nuv.tfgrs.features.reportes.service.ReporteProgramadoService;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,20 +22,24 @@ import java.util.stream.Collectors;
 public class ReporteProgramadoServiceImpl implements ReporteProgramadoService {
 
     private final ReporteProgramadoRepository reporteProgramadoRepository;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<ReporteProgramadoResponse> listar() {
-        return reporteProgramadoRepository.findAllByOrderByCreatedAtDesc()
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        return reporteProgramadoRepository.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId)
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional
     public ReporteProgramadoResponse crear(CrearReporteProgramadoRequest request, String username) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
         LocalDateTime proximaEjecucion = calcularProxima(LocalDate.now(), request.getFrecuencia());
 
         ReporteProgramado programado = ReporteProgramado.builder()
+                .organizationId(organizationId)
                 .tipo(request.getTipo())
                 .frecuencia(request.getFrecuencia())
                 .activo(true)
@@ -48,7 +53,8 @@ public class ReporteProgramadoServiceImpl implements ReporteProgramadoService {
     @Override
     @Transactional
     public ReporteProgramadoResponse toggleActivo(Long id) {
-        ReporteProgramado programado = reporteProgramadoRepository.findById(id)
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        ReporteProgramado programado = reporteProgramadoRepository.findByIdAndOrganizationId(id, organizationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Programación no encontrada"));
         programado.setActivo(!Boolean.TRUE.equals(programado.getActivo()));
         return toResponse(reporteProgramadoRepository.save(programado));
@@ -57,10 +63,13 @@ public class ReporteProgramadoServiceImpl implements ReporteProgramadoService {
     @Override
     @Transactional
     public void eliminar(Long id) {
-        if (!reporteProgramadoRepository.existsById(id)) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        if (!reporteProgramadoRepository.existsByIdAndOrganizationId(id, organizationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Programación no encontrada");
         }
-        reporteProgramadoRepository.deleteById(id);
+        ReporteProgramado programado = reporteProgramadoRepository.findByIdAndOrganizationId(id, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Programación no encontrada"));
+        reporteProgramadoRepository.delete(programado);
     }
 
     private LocalDateTime calcularProxima(LocalDate base, String frecuencia) {
