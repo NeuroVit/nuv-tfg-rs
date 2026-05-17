@@ -290,6 +290,13 @@ public class AuthController {
         return ResponseEntity.ok(authService.actualizarPerfilUsuarioActual(authentication.getName(), request));
     }
 
+    @PostMapping("/onboarding/complete")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> completarOnboarding(Authentication authentication) {
+        authService.completarOnboarding(authentication.getName());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/change-password")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> cambiarPasswordActual(

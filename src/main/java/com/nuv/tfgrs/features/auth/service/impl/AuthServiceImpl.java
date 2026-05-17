@@ -363,6 +363,16 @@ public class AuthServiceImpl implements AuthService {
         usuarioRepository.save(usuario);
     }
 
+    @Override
+    @Transactional
+    public void completarOnboarding(String username) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthException(HttpStatus.UNAUTHORIZED, GENERIC_LOGIN_ERROR));
+        usuario.setOnboardingCompleted(true);
+        usuario.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        usuarioRepository.save(usuario);
+    }
+
     private void recordRoleChange(Long userId, Long changedBy, Role oldRole, Role newRole, String reason) {
         String sql = """
                 INSERT INTO user_role_audit (user_id, changed_by, old_role, new_role, reason, changed_at)

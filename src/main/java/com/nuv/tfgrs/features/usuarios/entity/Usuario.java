@@ -81,9 +81,8 @@ public class Usuario implements UserDetails, TokenVersionAware {
     @Column(name = "subscription_status", nullable = false, length = 20)
     private String subscriptionStatus;
 
-    // Also make password nullable:
-    //@Column(nullable = true)
-    //private String password;
+    @Column(name = "onboarding_completed", nullable = false)
+    private Boolean onboardingCompleted;
  
     @PrePersist
     protected void onCreate() {
@@ -103,6 +102,9 @@ public class Usuario implements UserDetails, TokenVersionAware {
         }
         if (subscriptionStatus == null) {
             subscriptionStatus = "INACTIVE";
+        }
+        if (onboardingCompleted == null) {
+            onboardingCompleted = false;
         }
     }
  
