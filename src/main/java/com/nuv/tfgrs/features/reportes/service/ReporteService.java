@@ -9,5 +9,6 @@ public interface ReporteService {
     List<ReporteResponse> listar();
     List<ReporteResponse> listarPorTipo(String tipo);
     ReporteResponse generar(CrearReporteRequest request, String username);
+    ReporteResponse generar(CrearReporteRequest request, String username, Long organizationId);
     void eliminar(Long id);
 }

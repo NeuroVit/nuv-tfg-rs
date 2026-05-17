@@ -14,6 +14,7 @@ import com.nuv.tfgrs.features.inventario.repository.MovimientoStockRepository;
 import com.nuv.tfgrs.features.productos.repository.ProductoRepository;
 import com.nuv.tfgrs.features.reportes.repository.ReporteRepository;
 import com.nuv.tfgrs.features.reportes.service.ReporteService;
+import com.nuv.tfgrs.security.org.CurrentOrganizationResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -40,27 +41,38 @@ public class ReporteServiceImpl implements ReporteService {
     private final ClienteRepository clienteRepository;
     private final MovimientoStockRepository movimientoStockRepository;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final CurrentOrganizationResolver currentOrganizationResolver;
 
     @Override
     @Transactional(readOnly = true)
     public List<ReporteResponse> listar() {
-        return reporteRepository.findAllByOrderByCreatedAtDesc()
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        return reporteRepository.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId)
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ReporteResponse> listarPorTipo(String tipo) {
-        return reporteRepository.findByTipoOrderByCreatedAtDesc(tipo)
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        return reporteRepository.findByOrganizationIdAndTipoOrderByCreatedAtDesc(organizationId, tipo)
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional
     public ReporteResponse generar(CrearReporteRequest request, String username) {
-        String datos = generarDatos(request.getTipo());
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        return generar(request, username, organizationId);
+    }
+
+    @Override
+    @Transactional
+    public ReporteResponse generar(CrearReporteRequest request, String username, Long organizationId) {
+        String datos = generarDatos(request.getTipo(), organizationId);
 
         Reporte reporte = Reporte.builder()
+                .organizationId(organizationId)
                 .nombre(request.getNombre())
                 .tipo(request.getTipo())
                 .descripcion(request.getDescripcion())
@@ -74,23 +86,26 @@ public class ReporteServiceImpl implements ReporteService {
     @Override
     @Transactional
     public void eliminar(Long id) {
-        if (!reporteRepository.existsById(id)) {
+        Long organizationId = currentOrganizationResolver.requireMembership().organizationId();
+        if (!reporteRepository.existsByIdAndOrganizationId(id, organizationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reporte no encontrado");
         }
-        reporteRepository.deleteById(id);
+        Reporte reporte = reporteRepository.findByIdAndOrganizationId(id, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reporte no encontrado"));
+        reporteRepository.delete(reporte);
     }
 
-    private String generarDatos(String tipo) {
+    private String generarDatos(String tipo, Long organizationId) {
         try {
             Map<String, Object> datos = new HashMap<>();
             datos.put("generadoEn", LocalDateTime.now().toString());
 
             switch (tipo) {
                 case "INVENTARIO" -> {
-                    List<Producto> productos = productoRepository.findAll();
-                    List<Producto> stockBajo = productoRepository.findLowStockProducts();
+                    List<Producto> productos = productoRepository.findByOrganizationId(organizationId);
+                    List<Producto> stockBajo = productoRepository.findLowStockProductsByOrganizationId(organizationId);
                     double valorTotal = productos.stream()
-                            .mapToDouble(p -> (p.getAcquisitionPrice() != null ? p.getAcquisitionPrice().doubleValue() : 0)
+                            .mapToDouble(p -> (p.getUnitPrice() != null ? p.getUnitPrice().doubleValue() : 0)
                                     * p.getCurrentQuantity())
                             .sum();
                     datos.put("totalProductos", productos.size());
@@ -104,7 +119,7 @@ public class ReporteServiceImpl implements ReporteService {
                     )).collect(Collectors.toList()));
                 }
                 case "ALERTAS" -> {
-                    List<AlertaStock> alertas = alertaStockRepository.findAll();
+                    List<AlertaStock> alertas = alertaStockRepository.findByOrganizationId(organizationId);
                     List<AlertaStock> pendientes = alertas.stream()
                             .filter(a -> !Boolean.TRUE.equals(a.getResolved())).collect(Collectors.toList());
                     datos.put("totalAlertas", alertas.size());
@@ -117,12 +132,14 @@ public class ReporteServiceImpl implements ReporteService {
                     )).collect(Collectors.toList()));
                 }
                 case "CLIENTES" -> {
-                    List<Cliente> clientes = clienteRepository.findAll();
+                    List<Cliente> clientes = clienteRepository.findByOrganizationIdOrderByNameAsc(organizationId);
                     long activos = clientes.stream().filter(c -> Boolean.TRUE.equals(c.getActive())).count();
 
                     Long nuevos30d = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM clients WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
-                            new MapSqlParameterSource(), Long.class);
+                            "SELECT COUNT(*) FROM clients " +
+                                    "WHERE organization_id = :organizationId " +
+                                    "AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+                            new MapSqlParameterSource("organizationId", organizationId), Long.class);
 
                     datos.put("totalClientes", clientes.size());
                     datos.put("clientesActivos", activos);
@@ -135,7 +152,7 @@ public class ReporteServiceImpl implements ReporteService {
                     )).collect(Collectors.toList()));
                 }
                 case "MOVIMIENTOS" -> {
-                    List<MovimientoStock> movimientos = movimientoStockRepository.findAll();
+                    List<MovimientoStock> movimientos = movimientoStockRepository.findByOrganizationIdOrderByMovedAtDesc(organizationId);
                     long entradas = movimientos.stream().filter(m -> m.getDelta() > 0).count();
                     long salidas  = movimientos.stream().filter(m -> m.getDelta() < 0).count();
                     datos.put("totalMovimientos", movimientos.size());
@@ -143,40 +160,46 @@ public class ReporteServiceImpl implements ReporteService {
                     datos.put("salidas", salidas);
                 }
                 case "VENTAS" -> {
-                    MapSqlParameterSource empty = new MapSqlParameterSource();
+                    MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
 
-                    // Global totals
                     Map<String, Object> totales = jdbcTemplate.queryForMap(
                             "SELECT COUNT(*) AS totalVentas, COALESCE(SUM(total_amount),0) AS totalIngresos, " +
-                            "COALESCE(AVG(total_amount),0) AS promedioVenta FROM sales",
-                            empty);
+                            "COALESCE(AVG(total_amount),0) AS promedioVenta " +
+                            "FROM sales WHERE organization_id = :organizationId",
+                            params);
 
-                    // Current month
                     Map<String, Object> mes = jdbcTemplate.queryForMap(
                             "SELECT COUNT(*) AS ventasMes, COALESCE(SUM(total_amount),0) AS ingresosMes " +
-                            "FROM sales WHERE YEAR(sold_at)=YEAR(NOW()) AND MONTH(sold_at)=MONTH(NOW())",
-                            empty);
+                            "FROM sales " +
+                            "WHERE organization_id = :organizationId " +
+                            "AND YEAR(sold_at)=YEAR(NOW()) AND MONTH(sold_at)=MONTH(NOW())",
+                            params);
 
-                    // New clients last 30 days
                     Long nuevosClientes = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM clients WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
-                            empty, Long.class);
+                            "SELECT COUNT(*) FROM clients " +
+                            "WHERE organization_id = :organizationId " +
+                            "AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+                            params, Long.class);
 
-                    // Top 5 products by revenue
                     List<Map<String, Object>> topRows = jdbcTemplate.queryForList(
                             "SELECT p.name AS nombre, SUM(si.quantity) AS totalUnidades, " +
                             "ROUND(SUM(si.unit_price_snapshot * si.quantity),2) AS ingresos " +
-                            "FROM sale_items si JOIN products p ON p.id = si.product_id " +
+                            "FROM sale_items si " +
+                            "JOIN sales s ON s.id = si.sale_id " +
+                            "JOIN products p ON p.id = si.product_id " +
+                            "WHERE s.organization_id = :organizationId " +
+                            "AND p.organization_id = :organizationId " +
                             "GROUP BY si.product_id, p.name ORDER BY ingresos DESC LIMIT 5",
-                            empty);
+                            params);
 
-                    // Top client by total purchases
                     List<Map<String, Object>> topClientes = jdbcTemplate.queryForList(
                             "SELECT c.name AS nombre, COUNT(s.id) AS totalVentas, " +
                             "ROUND(SUM(s.total_amount),2) AS totalGastado " +
                             "FROM sales s JOIN clients c ON c.id = s.client_id " +
+                            "WHERE s.organization_id = :organizationId " +
+                            "AND c.organization_id = :organizationId " +
                             "GROUP BY s.client_id, c.name ORDER BY totalGastado DESC LIMIT 3",
-                            empty);
+                            params);
 
                     datos.put("totalVentas", toLong(totales.get("totalVentas")));
                     datos.put("totalIngresos", toDouble(totales.get("totalIngresos")));
