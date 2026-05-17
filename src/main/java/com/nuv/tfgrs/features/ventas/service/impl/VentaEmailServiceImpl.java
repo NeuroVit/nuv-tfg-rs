@@ -3,14 +3,10 @@ package com.nuv.tfgrs.features.ventas.service.impl;
 import com.nuv.tfgrs.features.ventas.dto.response.VentaItemResponse;
 import com.nuv.tfgrs.features.ventas.dto.response.VentaResponse;
 import com.nuv.tfgrs.features.clientes.entity.Cliente;
+import com.nuv.tfgrs.infrastructure.email.EmailDispatchService;
 import com.nuv.tfgrs.features.ventas.service.VentaEmailService;
-import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,10 +19,7 @@ import java.util.Locale;
 @Slf4j
 public class VentaEmailServiceImpl implements VentaEmailService {
 
-    private final ObjectProvider<JavaMailSender> mailSenderProvider;
-
-    @Value("${spring.mail.username:}")
-    private String fromEmail;
+    private final EmailDispatchService emailDispatchService;
 
     private static final Locale LOCALE_ES = Locale.forLanguageTag("es-ES");
     private static final NumberFormat CURRENCY_FORMAT = NumberFormat.getCurrencyInstance(LOCALE_ES);
@@ -35,27 +28,18 @@ public class VentaEmailServiceImpl implements VentaEmailService {
     @Override
     public void enviarComprobanteVenta(VentaResponse venta, Cliente cliente) {
         if (cliente.getEmail() == null || cliente.getEmail().isBlank()) {
-            log.info("Cliente {} sin email. Se omite envío de comprobante de venta #{}", cliente.getId(), venta.id());
-            return;
-        }
-        if (fromEmail == null || fromEmail.isBlank()) {
-            log.warn("spring.mail.username no configurado. Se omite envío de comprobante de venta #{}", venta.id());
-            return;
-        }
-        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
-        if (mailSender == null) {
-            log.warn("JavaMailSender no disponible. Se omite envío de comprobante de venta #{}", venta.id());
+            log.info("Cliente {} sin email. Se omite envio de comprobante de venta #{}", cliente.getId(), venta.id());
             return;
         }
 
         try {
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-            helper.setFrom(fromEmail, "NeuralStock");
-            helper.setTo(cliente.getEmail().trim());
-            helper.setSubject("NeuralStock | Comprobante de compra #" + venta.id());
-            helper.setText(buildTextBody(venta, cliente), buildHtmlBody(venta, cliente));
-            mailSender.send(mimeMessage);
+            emailDispatchService.sendEmail(
+                    "NeuralStock",
+                    cliente.getEmail().trim(),
+                    "NeuralStock | Comprobante de compra #" + venta.id(),
+                    buildTextBody(venta, cliente),
+                    buildHtmlBody(venta, cliente)
+            );
             log.info("Comprobante de venta #{} enviado a cliente {} ({})", venta.id(), cliente.getId(), cliente.getEmail());
         } catch (Exception ex) {
             throw new IllegalStateException("No se pudo enviar el comprobante de venta", ex);

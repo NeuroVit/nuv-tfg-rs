@@ -3,16 +3,12 @@ package com.nuv.tfgrs.features.pedidosproveedor.service.impl;
 import com.nuv.tfgrs.features.pedidosproveedor.dto.response.PedidoProveedorItemResponse;
 import com.nuv.tfgrs.features.pedidosproveedor.dto.response.PedidoProveedorResponse;
 import com.nuv.tfgrs.features.proveedores.entity.Proveedor;
+import com.nuv.tfgrs.infrastructure.email.EmailDispatchService;
 import com.nuv.tfgrs.features.pedidosproveedor.service.PedidoProveedorEmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
-import jakarta.mail.internet.MimeMessage;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.format.DateTimeFormatter;
@@ -23,10 +19,7 @@ import java.util.Locale;
 @Slf4j
 public class PedidoProveedorEmailServiceImpl implements PedidoProveedorEmailService {
 
-    private final ObjectProvider<JavaMailSender> mailSenderProvider;
-
-    @Value("${spring.mail.username:}")
-    private String fromEmail;
+    private final EmailDispatchService emailDispatchService;
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final Locale LOCALE_ES = Locale.forLanguageTag("es-ES");
@@ -38,26 +31,15 @@ public class PedidoProveedorEmailServiceImpl implements PedidoProveedorEmailServ
             log.info("Proveedor {} sin email. Se omite envio de pedido #{}", proveedor.getId(), pedido.id());
             return;
         }
-        if (fromEmail == null || fromEmail.isBlank()) {
-            log.warn("spring.mail.username no configurado. Se omite envio de pedido #{}", pedido.id());
-            return;
-        }
-        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
-        if (mailSender == null) {
-            log.warn("JavaMailSender no disponible. Se omite envio de pedido #{}", pedido.id());
-            return;
-        }
 
         try {
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-
-            helper.setFrom(fromEmail, "NeuralStock");
-            helper.setTo(proveedor.getEmail().trim());
-            helper.setSubject("NeuralStock | Pedido #" + pedido.id() + " - " + pedido.providerNombre());
-            helper.setText(buildTextBody(pedido), buildHtmlBody(pedido));
-
-            mailSender.send(mimeMessage);
+            emailDispatchService.sendEmail(
+                    "NeuralStock",
+                    proveedor.getEmail().trim(),
+                    "NeuralStock | Pedido #" + pedido.id() + " - " + pedido.providerNombre(),
+                    buildTextBody(pedido),
+                    buildHtmlBody(pedido)
+            );
             log.info("Correo de pedido #{} enviado a proveedor {} ({})", pedido.id(), proveedor.getId(), proveedor.getEmail());
         } catch (Exception ex) {
             throw new IllegalStateException("No se pudo enviar el correo del pedido", ex);
