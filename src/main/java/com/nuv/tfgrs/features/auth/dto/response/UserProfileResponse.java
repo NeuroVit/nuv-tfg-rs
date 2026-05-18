@@ -12,7 +12,8 @@ public record UserProfileResponse(
         boolean activo,
         String avatarUrl,
         boolean mustChangePassword,
-        String timeZone
+        String timeZone,
+        boolean onboardingCompleted
 ) {
     public static UserProfileResponse from(Usuario user) {
         return new UserProfileResponse(
@@ -25,7 +26,8 @@ public record UserProfileResponse(
                 Boolean.TRUE.equals(user.getActive()),
                 user.getAvatarUrl(),
                 Boolean.TRUE.equals(user.getMustChangePassword()),
-                user.getTimeZone()
+                user.getTimeZone(),
+                Boolean.TRUE.equals(user.getOnboardingCompleted())
         );
     }
 }
