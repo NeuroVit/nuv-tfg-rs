@@ -1,6 +1,5 @@
 package com.nuv.tfgrs.features.reportes.service.ia;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.stereotype.Service;
@@ -13,12 +12,16 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 
 @Service
-@RequiredArgsConstructor
 public class ReporteAnalisisIaService {
 
     private final ChatModel chatModel;
     private final ReporteAnalisisIaPromptBuilder promptBuilder;
     private static final Map<String, String> ES_REPLACEMENTS = createEsReplacements();
+
+    public ReporteAnalisisIaService(ChatModel chatModel, ReporteAnalisisIaPromptBuilder promptBuilder) {
+        this.chatModel = chatModel;
+        this.promptBuilder = promptBuilder;
+    }
 
     public ReporteAnalisisIaResultado analizar(
             String tipoReporte,

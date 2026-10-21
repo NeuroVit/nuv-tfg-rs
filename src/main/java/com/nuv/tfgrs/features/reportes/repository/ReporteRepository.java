@@ -2,12 +2,10 @@ package com.nuv.tfgrs.features.reportes.repository;
 
 import com.nuv.tfgrs.features.reportes.entity.Reporte;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
 
-@Repository
 public interface ReporteRepository extends JpaRepository<Reporte, Long> {
     List<Reporte> findAllByOrganizationIdOrderByCreatedAtDesc(Long organizationId);
     List<Reporte> findByOrganizationIdAndTipoOrderByCreatedAtDesc(Long organizationId, String tipo);

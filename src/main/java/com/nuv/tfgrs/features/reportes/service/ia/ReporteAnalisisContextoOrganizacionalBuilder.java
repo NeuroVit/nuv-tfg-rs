@@ -1,6 +1,5 @@
 package com.nuv.tfgrs.features.reportes.service.ia;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -10,13 +9,16 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@RequiredArgsConstructor
 public class ReporteAnalisisContextoOrganizacionalBuilder {
 
     private static final int TOP_PRODUCTOS_LIMIT = 5;
     private static final int TOP_CLIENTES_LIMIT = 3;
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
+
+    public ReporteAnalisisContextoOrganizacionalBuilder(NamedParameterJdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     public Map<String, Object> build(Long organizationId) {
         MapSqlParameterSource params = new MapSqlParameterSource("organizationId", organizationId);
